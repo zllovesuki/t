@@ -3,73 +3,104 @@ package state
 import (
 	"net"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
-type Notifier struct {
-	mu       sync.Mutex
-	peers    map[uint64]net.Conn
-	channels map[uint64]chan ClientUpdate
+type peerComm struct {
+	conn net.Conn
+	ch   chan ClientUpdate
 }
 
-func NewNotifer() *Notifier {
+type direction struct {
+	peer uint64
+	in   bool
+}
+
+type Notifier struct {
+	mu     sync.RWMutex
+	peers  sync.Map
+	logger *zap.Logger
+}
+
+func NewNotifer(logger *zap.Logger) *Notifier {
 	return &Notifier{
-		peers:    make(map[uint64]net.Conn),
-		channels: make(map[uint64]chan ClientUpdate),
+		logger: logger,
 	}
 }
 
-func (n *Notifier) Put(peer uint64, conn net.Conn) <-chan ClientUpdate {
+func (n *Notifier) Put(peer uint64, conn net.Conn, in bool) <-chan ClientUpdate {
 	n.mu.Lock()
-	defer n.mu.Unlock()
+	k := direction{
+		peer: peer,
+		in:   in,
+	}
+	p := peerComm{
+		conn: conn,
+		ch:   make(chan ClientUpdate),
+	}
+	_, loaded := n.peers.LoadOrStore(k, p)
+	if loaded {
+		n.mu.Unlock()
+		n.logger.Warn("duplicate notifier for peer", zap.Uint64("peer", peer), zap.Bool("in", in))
+		return nil
+	}
+	n.mu.Unlock()
 
-	ch := make(chan ClientUpdate)
-	n.peers[peer] = conn
-	n.channels[peer] = ch
-
-	go func(conn net.Conn) {
+	go func(peer uint64, p peerComm) {
 		recv := make([]byte, ClientUpdateSize)
 		for {
-			n, err := conn.Read(recv)
-			if n > 0 {
+			l, err := p.conn.Read(recv)
+			if l > 0 {
 				var x ClientUpdate
 				x.Unpack(recv)
-				ch <- x
+				p.ch <- x
 			}
 			if err != nil {
-				// fmt.Printf("error in notify stream: %+v\n", err)
-				close(ch)
+				n.logger.Error("reading notifying stream", zap.Uint64("peer", peer), zap.Error(err))
+				p.conn.Close()
+				close(p.ch)
 				break
 			}
 		}
-	}(conn)
+	}(peer, p)
 
-	return ch
+	return p.ch
 }
 
 func (n *Notifier) Remove(peer uint64) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	delete(n.peers, peer)
-	delete(n.channels, peer)
+	inc, ok := n.peers.LoadAndDelete(direction{
+		peer: peer,
+		in:   true,
+	})
+	if ok {
+		comm := inc.(peerComm)
+		comm.conn.Close()
+	}
+	out, ok := n.peers.LoadAndDelete(direction{
+		peer: peer,
+		in:   false,
+	})
+	if ok {
+		comm := out.(peerComm)
+		comm.conn.Close()
+	}
+	n.mu.Unlock()
 }
 
 func (n *Notifier) Broadcast(b []byte) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	dead := []uint64{}
-	for p, c := range n.peers {
-		_, err := c.Write(b)
-		if err != nil {
-			dead = append(dead, p)
-			// fmt.Printf("error notifing peer %d: %+v\n", p, err)
+	n.mu.RLock()
+	n.peers.Range(func(peer, comm interface{}) bool {
+		k := peer.(direction)
+		if k.in {
+			return true
 		}
-	}
-
-	for _, d := range dead {
-		n.peers[d].Close()
-		delete(n.peers, d)
-		delete(n.channels, d)
-	}
+		_, err := comm.(peerComm).conn.Write(b)
+		if err != nil {
+			n.logger.Error("notifying peer", zap.Uint64("peer", k.peer), zap.Error(err))
+		}
+		return true
+	})
+	n.mu.RUnlock()
 }

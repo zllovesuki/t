@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -16,17 +17,20 @@ import (
 
 type PeerMap struct {
 	self       uint64
-	peersMutex sync.Map
+	peersMutex *RingMutex
 	peers      sync.Map
 	logger     *zap.Logger
 	notify     chan *multiplexer.Peer
+	num        *uint64
 }
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		notify: make(chan *multiplexer.Peer),
-		self:   self,
-		logger: logger,
+		peersMutex: NewRing(43),
+		notify:     make(chan *multiplexer.Peer),
+		self:       self,
+		logger:     logger,
+		num:        new(uint64),
 	}
 }
 
@@ -37,20 +41,17 @@ type PeerConfig struct {
 	Wait      time.Duration
 }
 
-func (s *PeerMap) locker(peer uint64) (locker func(), unlocker func()) {
-	mu, _ := s.peersMutex.LoadOrStore(peer, &sync.Mutex{})
-	lock := mu.(*sync.Mutex)
-	return lock.Lock, lock.Unlock
-}
-
 func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
-	lock, unlock := s.locker(conf.Peer)
-	lock()
-	defer unlock()
 
+	rUnlock := s.peersMutex.RLock(conf.Peer)
 	if _, ok := s.peers.Load(conf.Peer); ok {
+		rUnlock()
 		return errors.New("already have session with this peer")
 	}
+
+	rUnlock()
+	unlock := s.peersMutex.Lock(conf.Peer)
+	defer unlock()
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
 		Conn:      conf.Conn,
@@ -76,6 +77,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 
 	s.logger.Info("peer registered", zap.Bool("initiator", conf.Initiator), zap.Uint64("peerID", conf.Peer))
 
+	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)
 	s.notify <- p
 
@@ -84,6 +86,10 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 
 func (s *PeerMap) Notify() <-chan *multiplexer.Peer {
 	return s.notify
+}
+
+func (s *PeerMap) Len() uint64 {
+	return atomic.LoadUint64(s.num)
 }
 
 func (s *PeerMap) Print() {
@@ -96,38 +102,29 @@ func (s *PeerMap) Print() {
 }
 
 func (s *PeerMap) Has(peer uint64) bool {
-	lock, unlock := s.locker(peer)
-	lock()
-	defer unlock()
-
+	rUnlock := s.peersMutex.RLock(peer)
 	_, ok := s.peers.Load(peer)
-
+	rUnlock()
 	return ok
 }
 
 func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
-	lock, unlock := s.locker(peer)
-	lock()
-	defer unlock()
-
-	if p, ok := s.peers.Load(peer); ok {
+	rUnlock := s.peersMutex.RLock(peer)
+	p, ok := s.peers.Load(peer)
+	rUnlock()
+	if ok {
 		return p.(*multiplexer.Peer)
 	}
-
 	return nil
 }
 
 func (s *PeerMap) Remove(peer uint64) error {
-	lock, unlock := s.locker(peer)
-	lock()
-	defer unlock()
-
-	p, ok := s.peers.Load(peer)
+	unlock := s.peersMutex.Lock(peer)
+	p, ok := s.peers.LoadAndDelete(peer)
+	unlock()
 	if !ok {
 		return nil
 	}
-
-	s.peers.Delete(peer)
-
+	atomic.AddUint64(s.num, ^uint64(0))
 	return p.(*multiplexer.Peer).Bye()
 }
