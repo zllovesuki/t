@@ -2,7 +2,6 @@ package multiplexer
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 
@@ -24,7 +23,7 @@ type Peer struct {
 type PeerConfig struct {
 	Conn      net.Conn
 	Initiator bool
-	Peer      int64
+	Peer      uint64
 }
 
 func NewPeer(config PeerConfig) (*Peer, error) {
@@ -32,10 +31,10 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 	var err error
 	if config.Initiator {
 		session, err = yamux.Client(config.Conn, nil)
-		fmt.Printf("acting as client\n")
+		// fmt.Printf("acting as client\n")
 	} else {
 		session, err = yamux.Server(config.Conn, nil)
-		fmt.Printf("acting as server\n")
+		// fmt.Printf("acting as server\n")
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
@@ -56,18 +55,13 @@ func (p *Peer) Start(ctx context.Context) {
 	for {
 		conn, err := p.session.Accept()
 		if err != nil {
-			// if err == io.EOF {
-			// 	return
-			// }
-			fmt.Printf("error accepting new stream from peer: %+v\n", err)
 			return
 		}
-		fmt.Printf("new stream with peer %+v\n", p.config.Peer)
-		go p.assembleStream(ctx, conn)
+		go p.streamHandshake(ctx, conn)
 	}
 }
 
-func (p *Peer) assembleStream(c context.Context, conn net.Conn) {
+func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {
 	var s Pair
 	buf := make([]byte, 16)
 
@@ -76,7 +70,6 @@ func (p *Peer) assembleStream(c context.Context, conn net.Conn) {
 		if err == io.EOF {
 			return
 		}
-		fmt.Printf("stream read error: %+v\n", err)
 		return
 	}
 
@@ -87,7 +80,7 @@ func (p *Peer) assembleStream(c context.Context, conn net.Conn) {
 	}
 }
 
-func (p *Peer) Peer() int64 {
+func (p *Peer) Peer() uint64 {
 	return p.config.Peer
 }
 
@@ -110,7 +103,6 @@ func (p *Peer) OpenNotify() (net.Conn, error) {
 func (p *Peer) Bidirectional(ctx context.Context, conn net.Conn, pair Pair) {
 	n, err := p.session.Open()
 	if err != nil {
-		fmt.Printf("error opening stream: %+v\n", err)
 		return
 	}
 
@@ -124,18 +116,11 @@ func (p *Peer) Handle(ctx context.Context) <-chan StreamPair {
 	return p.incoming
 }
 
-func (p *Peer) NotifyClose() <-chan int64 {
-	c := make(chan int64)
-	go func() {
-		<-p.session.CloseChan()
-		c <- p.config.Peer
-		close(p.incoming)
-	}()
-	return c
+func (p *Peer) NotifyClose() <-chan struct{} {
+	return p.session.CloseChan()
 }
 
 func (p *Peer) Bye() error {
-	fmt.Printf("bye invoked to Peer %+v\n", p.config.Peer)
 	defer p.config.Conn.Close()
 	return p.session.Close()
 }

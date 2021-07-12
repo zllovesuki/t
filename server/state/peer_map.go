@@ -7,34 +7,37 @@ import (
 	"sync"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"go.uber.org/zap"
 
 	"github.com/pkg/errors"
 )
 
 type PeerMap struct {
-	mu    sync.Mutex
-	self  int64
-	peers map[int64]*multiplexer.Peer
+	mu     sync.Mutex
+	self   uint64
+	peers  map[uint64]*multiplexer.Peer
+	logger *zap.Logger
 }
 
-func NewPeerMap(self int64) *PeerMap {
+func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		peers: make(map[int64]*multiplexer.Peer),
-		self:  self,
+		peers:  make(map[uint64]*multiplexer.Peer),
+		self:   self,
+		logger: logger,
 	}
 }
 
-func (s *PeerMap) NewPeer(ctx context.Context, conn net.Conn, peer int64, client bool) (*multiplexer.Peer, error) {
+func (s *PeerMap) NewPeer(ctx context.Context, conn net.Conn, peer uint64, client bool) (*multiplexer.Peer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fmt.Printf("NewPeer: %+v\n", peer)
+	// fmt.Printf("NewPeer: %+v\n", peer)
 
 	if _, ok := s.peers[peer]; ok {
 		return nil, errors.New("already have session with this pair")
 	}
 
-	fmt.Print("creating new session\n")
+	// fmt.Print("creating new session\n")
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
 		Conn:      conn,
@@ -46,7 +49,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, conn net.Conn, peer int64, client
 	}
 	s.peers[peer] = p
 
-	fmt.Printf("peer registered: %+v\n", peer)
+	s.logger.Info("peer registered", zap.Uint64("peerID", peer))
 
 	return p, nil
 }
@@ -55,7 +58,7 @@ func (s *PeerMap) Print() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fmt.Printf("%+v\n", s.peers)
+	fmt.Printf("[pm] connected peers: %+v\n", s.peers)
 }
 
 func (s *PeerMap) Len() int {
@@ -65,7 +68,16 @@ func (s *PeerMap) Len() int {
 	return len(s.peers)/2 + 1
 }
 
-func (s *PeerMap) Get(peer int64) *multiplexer.Peer {
+func (s *PeerMap) Has(peer uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.peers[peer]
+
+	return ok
+}
+
+func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -76,7 +88,7 @@ func (s *PeerMap) Get(peer int64) *multiplexer.Peer {
 	return nil
 }
 
-func (s *PeerMap) Remove(peer int64) error {
+func (s *PeerMap) Remove(peer uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

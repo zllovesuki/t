@@ -1,4 +1,4 @@
-package server
+package state
 
 import (
 	"fmt"
@@ -8,18 +8,18 @@ import (
 
 type Notifier struct {
 	mu       sync.Mutex
-	peers    map[int64]net.Conn
-	channels map[int64]chan []byte
+	peers    map[uint64]net.Conn
+	channels map[uint64]chan []byte
 }
 
 func NewNotifer() *Notifier {
 	return &Notifier{
-		peers:    make(map[int64]net.Conn),
-		channels: make(map[int64]chan []byte),
+		peers:    make(map[uint64]net.Conn),
+		channels: make(map[uint64]chan []byte),
 	}
 }
 
-func (n *Notifier) Put(peer int64, conn net.Conn) <-chan []byte {
+func (n *Notifier) Put(peer uint64, conn net.Conn) func() (uint64, <-chan []byte) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -37,17 +37,19 @@ func (n *Notifier) Put(peer int64, conn net.Conn) <-chan []byte {
 				ch <- dup
 			}
 			if err != nil {
-				fmt.Printf("error in notify stream: %+v\n", err)
+				// fmt.Printf("error in notify stream: %+v\n", err)
 				close(ch)
 				break
 			}
 		}
 	}()
 
-	return ch
+	return func() (uint64, <-chan []byte) {
+		return peer, ch
+	}
 }
 
-func (n *Notifier) Remove(peer int64) {
+func (n *Notifier) Remove(peer uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 

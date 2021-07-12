@@ -5,15 +5,15 @@ import (
 )
 
 type ClientUpdate struct {
-	Peer      int64
-	Client    int64
+	Peer      uint64
+	Client    uint64
 	Connected bool
 }
 
 func (c *ClientUpdate) Unpack(b []byte) {
 	var x ClientUpdate
-	x.Peer = int64(binary.BigEndian.Uint64(b[0:8]))
-	x.Client = int64(binary.BigEndian.Uint64(b[8:16]))
+	x.Peer = binary.BigEndian.Uint64(b[0:8])
+	x.Client = binary.BigEndian.Uint64(b[8:16])
 	if b[17] == 1 {
 		x.Connected = true
 	}
@@ -23,8 +23,8 @@ func (c *ClientUpdate) Unpack(b []byte) {
 func (c *ClientUpdate) Pack() []byte {
 	b := make([]byte, 32)
 
-	binary.BigEndian.PutUint64(b[0:8], uint64(c.Peer))
-	binary.BigEndian.PutUint64(b[8:16], uint64(c.Client))
+	binary.BigEndian.PutUint64(b[0:8], c.Peer)
+	binary.BigEndian.PutUint64(b[8:16], c.Client)
 	if c.Connected {
 		b[17] = 1
 	}

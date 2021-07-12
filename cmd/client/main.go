@@ -4,13 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/zllovesuki/t/multiplexer"
 )
 
@@ -20,9 +23,19 @@ func init() {
 
 var (
 	peer    = flag.String("peer", "127.0.0.1:11111", "server")
-	peerID  = flag.Int64("peerID", rand.Int63(), "peer id of the client")
 	forward = flag.String("forward", "127.0.0.1:3000", "where to forward")
 )
+
+func getRandomPeerID() (string, uint64) {
+	g, err := diceware.Generate(5)
+	if err != nil {
+		return "", 0
+	}
+	name := strings.Join(g, "-")
+	h := fnv.New64a()
+	h.Write([]byte(name))
+	return name, h.Sum64()
+}
 
 func main() {
 	flag.Parse()
@@ -36,8 +49,10 @@ func main() {
 		return
 	}
 
+	name, peerID := getRandomPeerID()
+
 	pair := multiplexer.Pair{
-		Source: *peerID,
+		Source: peerID,
 	}
 	buf := pair.Pack()
 	connector.Write(buf)
@@ -56,6 +71,8 @@ func main() {
 		fmt.Printf("error setting up peer: %+v\n", err)
 	}
 
+	fmt.Printf("%+v\n", name)
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
@@ -71,7 +88,6 @@ func main() {
 				fmt.Printf("error connecting to %s: %+v\n", *forward, err)
 				return
 			}
-			fmt.Printf("%+v\n", o)
 			go multiplexer.Connect(ctx, o, c.Conn)
 		}
 	}()

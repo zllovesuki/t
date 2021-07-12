@@ -7,27 +7,36 @@ import (
 
 type ClientMap struct {
 	mu         sync.Mutex
-	self       int64
-	clientPeer map[int64]int64
-	peerClient map[int64]int64
+	self       uint64
+	clientPeer map[uint64]uint64
+	peerClient map[uint64]uint64
 }
 
-func NewClientMap(self int64) *ClientMap {
+func NewClientMap(self uint64) *ClientMap {
 	return &ClientMap{
 		self:       self,
-		clientPeer: make(map[int64]int64),
-		peerClient: make(map[int64]int64),
+		clientPeer: make(map[uint64]uint64),
+		peerClient: make(map[uint64]uint64),
 	}
 }
 
-func (c *ClientMap) GetPeer(client int64) int64 {
+func (c *ClientMap) Has(client uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.clientPeer[client]
+
+	return ok
+}
+
+func (c *ClientMap) GetPeer(client uint64) uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	return c.clientPeer[client]
 }
 
-func (c *ClientMap) Put(client, peer int64) {
+func (c *ClientMap) Put(client, peer uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -35,7 +44,7 @@ func (c *ClientMap) Put(client, peer int64) {
 	c.peerClient[peer] = client
 }
 
-func (c *ClientMap) RemoveClient(client int64) {
+func (c *ClientMap) RemoveClient(client uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -44,7 +53,7 @@ func (c *ClientMap) RemoveClient(client int64) {
 	delete(c.peerClient, p)
 }
 
-func (c *ClientMap) RemovePeer(peer int64) {
+func (c *ClientMap) RemovePeer(peer uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -57,5 +66,5 @@ func (c *ClientMap) Print() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	fmt.Printf("%+v %+v\n", c.clientPeer, c.peerClient)
+	fmt.Printf("[cm] remotely connected clients: %+v\n", c.clientPeer)
 }

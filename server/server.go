@@ -3,35 +3,56 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/pkg/errors"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server/state"
+	"go.uber.org/zap"
+
+	"github.com/pkg/errors"
+)
+
+var (
+	ErrEndpointNotFound = fmt.Errorf("not peer is registered with this endpoint")
 )
 
 type Server struct {
-	c             context.Context
-	id            int64
+	parentCtx     context.Context
+	id            uint64
 	meta          Meta
 	peers         *state.PeerMap
 	clients       *state.PeerMap
 	remoteClients *state.ClientMap
-	notifier      *Notifier
+	notifier      *state.Notifier
 	listener      net.Listener
+	logger        *zap.Logger
+	gossip        *memberlist.Memberlist
+	gossipCfg     *memberlist.Config
+	config        Config
 }
 
-func NewServer(listener net.Listener) (*Server, error) {
+type Config struct {
+	Logger   *zap.Logger
+	Listener net.Listener
+	Gossip   struct {
+		IP      string
+		Port    int
+		Members []string
+	}
+}
+
+func New(conf Config) (*Server, error) {
 	rand.Seed(time.Now().UnixNano())
 
-	self := rand.Int63()
-	addr := listener.Addr().(*net.TCPAddr)
+	self := rand.Uint64()
+	addr := conf.Listener.Addr().(*net.TCPAddr)
 
-	pMap := state.NewPeerMap(self)
-	cMap := state.NewPeerMap(self)
+	pMap := state.NewPeerMap(conf.Logger, self)
+	cMap := state.NewPeerMap(conf.Logger, self)
 	rcMap := state.NewClientMap(self)
 
 	s := &Server{
@@ -42,16 +63,30 @@ func NewServer(listener net.Listener) (*Server, error) {
 		peers:         pMap,
 		clients:       cMap,
 		remoteClients: rcMap,
-		notifier:      NewNotifer(),
+		notifier:      state.NewNotifer(),
 		id:            self,
-		listener:      listener,
+		listener:      conf.Listener,
+		logger:        conf.Logger,
+		config:        conf,
 	}
+
+	c := memberlist.DefaultWANConfig()
+	c.AdvertiseAddr = conf.Gossip.IP
+	c.AdvertisePort = conf.Gossip.Port
+	c.BindAddr = conf.Gossip.IP
+	c.BindPort = conf.Gossip.Port
+	c.Events = s
+	c.Delegate = s
+	c.Name = fmt.Sprint(self)
+	c.LogOutput = io.Discard
+
+	s.gossipCfg = c
 
 	return s, nil
 }
 
 func (s *Server) Start(ctx context.Context) {
-	s.c = ctx
+	s.parentCtx = ctx
 	go func() {
 		for {
 			<-time.After(time.Second * 10)
@@ -63,16 +98,16 @@ func (s *Server) Start(ctx context.Context) {
 	}()
 	for {
 		conn, err := s.listener.Accept()
-		fmt.Printf("new connection\n")
+		// fmt.Printf("new connection\n")
 		if err != nil {
-			fmt.Printf("error accepting peer connection: %+v\n", err)
+			s.logger.Error("accepting TCP connection", zap.Error(err))
 			return
 		}
-		go s.handshake(ctx, conn)
+		go s.transportHandshake(ctx, conn)
 	}
 }
 
-func (s *Server) PeerID() int64 {
+func (s *Server) PeerID() uint64 {
 	return s.id
 }
 
@@ -80,67 +115,96 @@ func (s *Server) Meta() []byte {
 	return s.meta.Pack()
 }
 
-func (s *Server) handshake(ctx context.Context, conn net.Conn) {
+func (s *Server) transportHandshake(ctx context.Context, conn net.Conn) {
+	var err error
+	logger := s.logger
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("error during handshake", zap.Error(err))
+		conn.Close()
+	}()
+
 	var pair multiplexer.Pair
 	r := make([]byte, 16)
 
-	fmt.Printf("initiating handshake\n")
-
-	if _, err := conn.Read(r); err != nil {
-		fmt.Printf("failed to read handshake: %+v\n", err)
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+	_, err = conn.Read(r)
+	if err != nil {
+		err = errors.Wrap(err, "reading handshake")
 		return
 	}
 	pair.Unpack(r)
 
+	logger = logger.With(zap.Uint64("peerID", pair.Source))
+
+	// TODO(zllovesuki): possible race condition
+	if s.peers.Has(pair.Source) || s.clients.Has(pair.Source) || s.remoteClients.Has(pair.Source) {
+		err = errors.Errorf("duplicate peerID %d\n", pair.Source)
+		return
+	}
+	if pair.Source == 0 {
+		err = errors.Errorf("invalid source peerID %d", pair.Source)
+		return
+	}
+	if pair.Source == s.PeerID() {
+		err = errors.Errorf("loop: connecting to ourself %+v", pair)
+		return
+	}
+
+	var p *multiplexer.Peer
+
 	if pair.Destination == 0 {
-		fmt.Printf("handshake from client: %+v\n", pair)
+		logger.Info("handshake from client")
 
 		pair.Destination = s.PeerID()
 		w := pair.Pack()
-		if _, err := conn.Write(w); err != nil {
-			fmt.Printf("failed to write handshake: %+v\n", err)
-			return
-		}
-
-		p, err := s.clients.NewPeer(ctx, conn, pair.Source, false)
+		_, err = conn.Write(w)
 		if err != nil {
-			fmt.Printf("error setting up client: %+v\n", err)
+			err = errors.Wrap(err, "replying handshake")
 			return
 		}
 
-		update := state.ClientUpdate{
-			Peer:      s.PeerID(),
-			Client:    pair.Source,
-			Connected: true,
+		p, err = s.clients.NewPeer(ctx, conn, pair.Source, false)
+		if err != nil {
+			err = errors.Wrap(err, "setting up client")
+			return
 		}
-		s.notifier.Broadcast(update.Pack())
 
 		go s.clientListener(ctx, p)
 	} else {
-		fmt.Printf("handshake from peer: %+v\n", pair)
+		logger.Info("handshake from peer")
 
-		p, err := s.peers.NewPeer(ctx, conn, pair.Source, false)
+		var m Meta
+		var found bool
+		for _, node := range s.gossip.Members() {
+			err := m.Unpack(node.Meta)
+			if err != nil {
+				return
+			}
+			if pair.Source == m.PeerID {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			err = errors.Errorf("peer %d is not gossiping with us", pair.Source)
+			return
+		}
+
+		p, err = s.peers.NewPeer(ctx, conn, pair.Source, false)
 		if err != nil {
-			fmt.Printf("error setting up peer: %+v\n", err)
+			err = errors.Wrap(err, "setting up peer")
 			return
 		}
 		go s.peerListeners(ctx, p)
 	}
-}
 
-func (s *Server) clientListener(ctx context.Context, p *multiplexer.Peer) {
-	go p.Start(ctx)
-	go func() {
-		peer := <-p.NotifyClose()
-		fmt.Printf("removing client %+v\n", peer)
-		s.clients.Remove(peer)
-		update := state.ClientUpdate{
-			Peer:      s.PeerID(),
-			Client:    peer,
-			Connected: false,
-		}
-		s.notifier.Broadcast(update.Pack())
-	}()
+	conn.SetReadDeadline(time.Time{})
+	conn.SetWriteDeadline(time.Time{})
 }
 
 func (s *Server) findSession(pair multiplexer.Pair) *multiplexer.Peer {
@@ -157,170 +221,9 @@ func (s *Server) findSession(pair multiplexer.Pair) *multiplexer.Peer {
 func (s *Server) Open(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
 	p := s.findSession(pair)
 	if p == nil {
-		conn.Write([]byte("HTTP/1.1 406 Not Acceptable\r\nContent-Length: 18\r\nContent-Type: text/plan\r\n\r\nendpoint not found"))
 		return errors.Errorf("destination %d not found among peers", pair.Destination)
 	}
-	fmt.Printf("forwarding stream: %+v\n", pair)
+	s.logger.Info("forwarding stream", zap.Any("peer", pair))
 	go p.Bidirectional(ctx, conn, pair)
 	return nil
 }
-
-func (s *Server) peerListeners(ctx context.Context, p *multiplexer.Peer) {
-	go p.Start(ctx)
-	go func() {
-		peer := <-p.NotifyClose()
-		fmt.Printf("removing peer %+v\n", peer)
-		s.peers.Remove(peer)
-		s.remoteClients.RemovePeer(peer)
-		s.notifier.Remove(peer)
-	}()
-	go func() {
-		for c := range p.Handle(ctx) {
-			if c.Pair.Destination == 0 && c.Pair.Source == 0 {
-				fmt.Printf("opening notify channel with peer %+v\n", p.Peer())
-				ch := s.notifier.Put(p.Peer(), c.Conn)
-				go s.handleNotify(ctx, ch)
-				continue
-			}
-			s.Open(ctx, c.Conn, c.Pair)
-		}
-	}()
-	go func() {
-		fmt.Printf("incoming notify stream %+v\n", p.Peer())
-		c, err := p.OpenNotify()
-		if err != nil {
-			fmt.Printf("cannot open notify stream: %+v\n", err)
-			return
-		}
-		ch := s.notifier.Put(p.Peer(), c)
-		go s.handleNotify(ctx, ch)
-	}()
-}
-
-func (s *Server) handleNotify(ctx context.Context, ch <-chan []byte) {
-	for b := range ch {
-		var x state.ClientUpdate
-		x.Unpack(b)
-
-		fmt.Printf("notify: %+v\n", x)
-
-		switch x.Connected {
-		case true:
-			s.remoteClients.Put(x.Client, x.Peer)
-		case false:
-			s.remoteClients.RemoveClient(x.Client)
-		}
-	}
-}
-
-var _ memberlist.EventDelegate = &Server{}
-
-func (s *Server) NotifyJoin(node *memberlist.Node) {
-	if node.Name == fmt.Sprint(s.PeerID()) {
-		fmt.Printf("connecting to ourself, returning\n")
-		return
-	}
-	if node.Meta == nil {
-		return
-	}
-
-	var m Meta
-	if err := m.Unpack(node.Meta); err != nil {
-		fmt.Printf("error unpacking node meta: %+v\n", err)
-		return
-	}
-
-	fmt.Printf("new peer discovered: %+v\n", m)
-
-	go s.connectPeer(s.c, m)
-}
-
-func (s *Server) NotifyLeave(node *memberlist.Node) {
-	if node.Name == fmt.Sprint(s.PeerID()) {
-		fmt.Printf("removing ourself, returning\n")
-		return
-	}
-
-	var m Meta
-	if err := m.Unpack(node.Meta); err != nil {
-		fmt.Printf("error unpacking node meta: %+v\n", err)
-		return
-	}
-
-	go s.removePeer(s.c, m)
-}
-
-func (s *Server) NotifyUpdate(node *memberlist.Node) {
-	fmt.Printf("node update: %+v\n", node)
-}
-
-func (s *Server) connectPeer(ctx context.Context, m Meta) {
-	conn, err := net.Dial("tcp", m.Multiplexer)
-	if err != nil {
-		fmt.Printf("error connecting to new peer: %+v\n", err)
-		return
-	}
-
-	fmt.Printf("initiating handshake with peer\n")
-
-	pair := multiplexer.Pair{
-		Source:      s.PeerID(),
-		Destination: m.PeerID,
-	}
-	buf := pair.Pack()
-	conn.Write(buf)
-
-	p, err := s.peers.NewPeer(ctx, conn, pair.Destination, true)
-	if err != nil {
-		fmt.Printf("error starting client session: %+v\n", err)
-		return
-	}
-
-	go s.peerListeners(ctx, p)
-}
-
-func (s *Server) removePeer(ctx context.Context, m Meta) {
-	p := s.peers.Get(m.PeerID)
-	if p == nil {
-		return
-	}
-
-	fmt.Printf("peer disconnecting: %+v\n", m)
-
-	if err := p.Bye(); err != nil {
-		fmt.Printf("error disconnecting peer: %+v\n", err)
-	}
-}
-
-// var _ memberlist.Delegate = &Server{}
-
-// func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
-// 	// fmt.Printf("GetBroadcasts invoked: %d %d\n", overhead, limit)
-// 	return s.broadcasts.GetBroadcasts(overhead, limit)
-// }
-
-// func (s *Server) LocalState(join bool) []byte {
-// 	return nil
-// }
-
-// func (s *Server) MergeRemoteState(buf []byte, join bool) {
-// }
-
-// func (s *Server) NodeMeta(limit int) []byte {
-// 	// fmt.Printf("NodeMeta invoked: %d\n", limit)
-// 	return s.Meta()
-// }
-
-// func (s *Server) NotifyMsg(b []byte) {
-// 	var x state.ClientUpdate
-// 	x.Unpack(b)
-
-// 	fmt.Printf("notify: %+v\n", x)
-
-// 	switch x.Connected {
-// 	case true:
-// 		s.remoteClients.Put(x.Client, x.Peer)
-// 	case false:
-// 		s.remoteClients.RemoveClient(x.Client)
-// 	}
-// }
