@@ -21,24 +21,27 @@ var (
 )
 
 type Server struct {
-	parentCtx     context.Context
-	id            uint64
-	meta          Meta
-	peers         *state.PeerMap
-	clients       *state.PeerMap
-	remoteClients *state.ClientMap
-	notifier      *state.Notifier
-	listener      net.Listener
-	logger        *zap.Logger
-	gossip        *memberlist.Memberlist
-	gossipCfg     *memberlist.Config
-	config        Config
+	parentCtx        context.Context
+	id               uint64
+	meta             Meta
+	peers            *state.PeerMap
+	clients          *state.PeerMap
+	remoteClients    *state.ClientMap
+	notifier         *state.Notifier
+	peerListner      net.Listener
+	clientListener   net.Listener
+	logger           *zap.Logger
+	gossip           *memberlist.Memberlist
+	gossipCfg        *memberlist.Config
+	config           Config
+	peerConnectQueue chan Meta
 }
 
 type Config struct {
-	Logger   *zap.Logger
-	Listener net.Listener
-	Gossip   struct {
+	Logger         *zap.Logger
+	PeerListener   net.Listener
+	ClientListener net.Listener
+	Gossip         struct {
 		IP      string
 		Port    int
 		Members []string
@@ -49,7 +52,7 @@ func New(conf Config) (*Server, error) {
 	rand.Seed(time.Now().UnixNano())
 
 	self := rand.Uint64()
-	addr := conf.Listener.Addr().(*net.TCPAddr)
+	addr := conf.PeerListener.Addr().(*net.TCPAddr)
 
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
@@ -60,14 +63,16 @@ func New(conf Config) (*Server, error) {
 			PeerID:      self,
 			Multiplexer: fmt.Sprintf("%s:%d", addr.IP, addr.Port),
 		},
-		peers:         pMap,
-		clients:       cMap,
-		remoteClients: rcMap,
-		notifier:      state.NewNotifer(),
-		id:            self,
-		listener:      conf.Listener,
-		logger:        conf.Logger,
-		config:        conf,
+		peers:            pMap,
+		clients:          cMap,
+		remoteClients:    rcMap,
+		notifier:         state.NewNotifer(),
+		id:               self,
+		peerListner:      conf.PeerListener,
+		clientListener:   conf.ClientListener,
+		logger:           conf.Logger,
+		config:           conf,
+		peerConnectQueue: make(chan Meta, 16),
 	}
 
 	c := memberlist.DefaultWANConfig()
@@ -87,24 +92,40 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) {
 	s.parentCtx = ctx
+	// go func() {
+	// 	for {
+	// 		<-time.After(time.Second * 10)
+	// 		fmt.Printf("%d\n", s.PeerID())
+	// 		s.peers.Print()
+	// 		s.clients.Print()
+	// 		s.remoteClients.Print()
+	// 	}
+	// }()
 	go func() {
 		for {
-			<-time.After(time.Second * 10)
-			fmt.Printf("%d\n", s.PeerID())
-			s.peers.Print()
-			s.clients.Print()
-			s.remoteClients.Print()
+			conn, err := s.peerListner.Accept()
+			// fmt.Printf("new connection\n")
+			if err != nil {
+				s.logger.Error("accepting TCP connection", zap.Error(err))
+				return
+			}
+			go s.peerHandshake(ctx, conn)
 		}
 	}()
-	for {
-		conn, err := s.listener.Accept()
-		// fmt.Printf("new connection\n")
-		if err != nil {
-			s.logger.Error("accepting TCP connection", zap.Error(err))
-			return
+	go func() {
+		for {
+			conn, err := s.clientListener.Accept()
+			// fmt.Printf("new connection\n")
+			if err != nil {
+				s.logger.Error("accepting TCP connection", zap.Error(err))
+				return
+			}
+			go s.clientHandshake(ctx, conn)
 		}
-		go s.transportHandshake(ctx, conn)
-	}
+	}()
+	go s.handleClientEvents(ctx)
+	go s.handlePeerEvents(ctx)
+	go s.handlePeerConnects(ctx)
 }
 
 func (s *Server) PeerID() uint64 {
@@ -115,15 +136,76 @@ func (s *Server) Meta() []byte {
 	return s.meta.Pack()
 }
 
-func (s *Server) transportHandshake(ctx context.Context, conn net.Conn) {
+func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	var err error
 	logger := s.logger
 	defer func() {
 		if err == nil {
 			return
 		}
-		logger.Error("error during handshake", zap.Error(err))
+		logger.Error("error during client handshake", zap.Error(err))
 		conn.Close()
+	}()
+
+	var pair multiplexer.Pair
+	r := make([]byte, 16)
+
+	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 3))
+	_, err = conn.Read(r)
+	if err != nil {
+		err = errors.Wrap(err, "reading handshake")
+		return
+	}
+	pair.Unpack(r)
+
+	logger = logger.With(zap.Uint64("peerID", pair.Source))
+
+	logger.Info("handshake with client", zap.Any("peer", pair))
+
+	if pair.Source == 0 || pair.Source == pair.Destination {
+		err = errors.Errorf("invalid client handshake %+v", pair)
+		return
+	}
+	if pair.Source == s.PeerID() {
+		err = errors.Errorf("loop: connecting to ourself %+v", pair)
+		return
+	}
+
+	pair.Destination = s.PeerID()
+	w := pair.Pack()
+	_, err = conn.Write(w)
+	if err != nil {
+		err = errors.Wrap(err, "replying handshake")
+		return
+	}
+
+	conn.SetReadDeadline(time.Time{})
+	conn.SetWriteDeadline(time.Time{})
+
+	err = s.clients.NewPeer(ctx, state.PeerConfig{
+		Conn:      conn,
+		Peer:      pair.Source,
+		Initiator: false,
+		Wait:      time.Second * 1,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "setting up client")
+		return
+	}
+
+	s.clients.Print()
+}
+
+func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
+	var err error
+	logger := s.logger
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("error during peer handshake", zap.Error(err))
+		// conn.Close()
 	}()
 
 	var pair multiplexer.Pair
@@ -140,13 +222,10 @@ func (s *Server) transportHandshake(ctx context.Context, conn net.Conn) {
 
 	logger = logger.With(zap.Uint64("peerID", pair.Source))
 
-	// TODO(zllovesuki): possible race condition
-	if s.peers.Has(pair.Source) || s.clients.Has(pair.Source) || s.remoteClients.Has(pair.Source) {
-		err = errors.Errorf("duplicate peerID %d\n", pair.Source)
-		return
-	}
-	if pair.Source == 0 {
-		err = errors.Errorf("invalid source peerID %d", pair.Source)
+	logger.Info("handshake with peer", zap.Any("peer", pair))
+
+	if (pair.Source == 0 || pair.Destination == 0) || (pair.Source == pair.Destination) {
+		err = errors.Errorf("invalid peer handshake %+v", pair)
 		return
 	}
 	if pair.Source == s.PeerID() {
@@ -154,57 +233,21 @@ func (s *Server) transportHandshake(ctx context.Context, conn net.Conn) {
 		return
 	}
 
-	var p *multiplexer.Peer
-
-	if pair.Destination == 0 {
-		logger.Info("handshake from client")
-
-		pair.Destination = s.PeerID()
-		w := pair.Pack()
-		_, err = conn.Write(w)
-		if err != nil {
-			err = errors.Wrap(err, "replying handshake")
-			return
-		}
-
-		p, err = s.clients.NewPeer(ctx, conn, pair.Source, false)
-		if err != nil {
-			err = errors.Wrap(err, "setting up client")
-			return
-		}
-
-		go s.clientListener(ctx, p)
-	} else {
-		logger.Info("handshake from peer")
-
-		var m Meta
-		var found bool
-		for _, node := range s.gossip.Members() {
-			err := m.Unpack(node.Meta)
-			if err != nil {
-				return
-			}
-			if pair.Source == m.PeerID {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			err = errors.Errorf("peer %d is not gossiping with us", pair.Source)
-			return
-		}
-
-		p, err = s.peers.NewPeer(ctx, conn, pair.Source, false)
-		if err != nil {
-			err = errors.Wrap(err, "setting up peer")
-			return
-		}
-		go s.peerListeners(ctx, p)
-	}
-
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
+
+	err = s.peers.NewPeer(ctx, state.PeerConfig{
+		Conn:      conn,
+		Peer:      pair.Source,
+		Initiator: false,
+		Wait:      time.Second,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "setting up peer")
+		return
+	}
+
+	s.peers.Print()
 }
 
 func (s *Server) findSession(pair multiplexer.Pair) *multiplexer.Peer {

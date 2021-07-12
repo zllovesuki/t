@@ -1,7 +1,6 @@
 package state
 
 import (
-	"fmt"
 	"net"
 	"sync"
 )
@@ -9,32 +8,32 @@ import (
 type Notifier struct {
 	mu       sync.Mutex
 	peers    map[uint64]net.Conn
-	channels map[uint64]chan []byte
+	channels map[uint64]chan ClientUpdate
 }
 
 func NewNotifer() *Notifier {
 	return &Notifier{
 		peers:    make(map[uint64]net.Conn),
-		channels: make(map[uint64]chan []byte),
+		channels: make(map[uint64]chan ClientUpdate),
 	}
 }
 
-func (n *Notifier) Put(peer uint64, conn net.Conn) func() (uint64, <-chan []byte) {
+func (n *Notifier) Put(peer uint64, conn net.Conn) <-chan ClientUpdate {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	ch := make(chan []byte)
+	ch := make(chan ClientUpdate)
 	n.peers[peer] = conn
 	n.channels[peer] = ch
 
-	go func() {
-		recv := make([]byte, 32)
-		dup := make([]byte, 32)
+	go func(conn net.Conn) {
+		recv := make([]byte, ClientUpdateSize)
 		for {
 			n, err := conn.Read(recv)
 			if n > 0 {
-				copy(dup, recv)
-				ch <- dup
+				var x ClientUpdate
+				x.Unpack(recv)
+				ch <- x
 			}
 			if err != nil {
 				// fmt.Printf("error in notify stream: %+v\n", err)
@@ -42,11 +41,9 @@ func (n *Notifier) Put(peer uint64, conn net.Conn) func() (uint64, <-chan []byte
 				break
 			}
 		}
-	}()
+	}(conn)
 
-	return func() (uint64, <-chan []byte) {
-		return peer, ch
-	}
+	return ch
 }
 
 func (n *Notifier) Remove(peer uint64) {
@@ -61,10 +58,18 @@ func (n *Notifier) Broadcast(b []byte) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	dead := []uint64{}
 	for p, c := range n.peers {
 		_, err := c.Write(b)
 		if err != nil {
-			fmt.Printf("error notifing peer %d: %+v\n", p, err)
+			dead = append(dead, p)
+			// fmt.Printf("error notifing peer %d: %+v\n", p, err)
 		}
+	}
+
+	for _, d := range dead {
+		n.peers[d].Close()
+		delete(n.peers, d)
+		delete(n.channels, d)
 	}
 }

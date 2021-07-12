@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/server/state"
 
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/zap"
@@ -42,7 +43,7 @@ var _ memberlist.EventDelegate = &Server{}
 
 func (s *Server) NotifyJoin(node *memberlist.Node) {
 	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Info("gossip outself, refusing")
+		s.logger.Info("gossip ourself, refusing")
 		return
 	}
 	if node.Meta == nil {
@@ -56,12 +57,12 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 
 	s.logger.Info("new peer discovered via gossip", zap.Any("meta", m))
 
-	go s.connectPeer(s.parentCtx, m)
+	s.peerConnectQueue <- m
 }
 
 func (s *Server) NotifyLeave(node *memberlist.Node) {
 	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Info("gossip outself, refusing")
+		s.logger.Info("gossip ourself, refusing")
 		return
 	}
 
@@ -97,17 +98,20 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 	var err error
 	var conn net.Conn
 	logger := s.logger.With(zap.Any("meta", m))
+
+	conn, err = net.Dial("tcp", m.Multiplexer)
+	if err != nil {
+		logger.Error("opening multiplexer connection", zap.Error(err))
+		return
+	}
+
 	defer func() {
 		if err == nil {
 			return
 		}
+		conn.Close()
 		logger.Error("connecting to peer", zap.Error(err))
 	}()
-
-	conn, err = net.Dial("tcp", m.Multiplexer)
-	if err != nil {
-		return
-	}
 
 	logger.Info("initiating handshake with peer")
 
@@ -118,15 +122,29 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 	buf := pair.Pack()
 	conn.Write(buf)
 
-	var p *multiplexer.Peer
-	p, err = s.peers.NewPeer(ctx, conn, pair.Destination, true)
+	err = s.peers.NewPeer(ctx, state.PeerConfig{
+		Conn:      conn,
+		Peer:      m.PeerID,
+		Initiator: true,
+		Wait:      time.Second * 3,
+	})
 	if err != nil {
 		return
 	}
 
-	go s.peerListeners(ctx, p)
+	s.peers.Print()
+
 }
 
 func (s *Server) removePeer(ctx context.Context, m Meta) {
-	s.peers.Remove(m.PeerID)
+	p := s.peers.Get(m.PeerID)
+	if p == nil {
+		s.logger.Error("removing a non-existent peer")
+		return
+	}
+	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
+	s.notifier.Remove(p.Peer())
+	s.remoteClients.RemovePeer(p.Peer())
+	s.peers.Remove(p.Peer())
+	s.peers.Print()
 }

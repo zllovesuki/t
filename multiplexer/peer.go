@@ -2,8 +2,9 @@ package multiplexer
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"net"
+	"time"
 
 	"github.com/hashicorp/yamux"
 	"github.com/pkg/errors"
@@ -48,12 +49,8 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 }
 
 func (p *Peer) Start(ctx context.Context) {
-	go func() {
-		<-ctx.Done()
-		p.session.Close()
-	}()
 	for {
-		conn, err := p.session.Accept()
+		conn, err := p.session.AcceptStream()
 		if err != nil {
 			return
 		}
@@ -67,9 +64,7 @@ func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {
 
 	_, err := conn.Read(buf)
 	if err != nil {
-		if err == io.EOF {
-			return
-		}
+		fmt.Printf("error when reading stream handshake: %+v\n", err)
 		return
 	}
 
@@ -84,6 +79,10 @@ func (p *Peer) Peer() uint64 {
 	return p.config.Peer
 }
 
+func (p *Peer) Ping() (time.Duration, error) {
+	return p.session.Ping()
+}
+
 func (p *Peer) OpenNotify() (net.Conn, error) {
 	n, err := p.session.Open()
 	if err != nil {
@@ -95,7 +94,10 @@ func (p *Peer) OpenNotify() (net.Conn, error) {
 		Destination: 0,
 	}
 	buf := pair.Pack()
-	n.Write(buf)
+	if _, err := n.Write(buf); err != nil {
+		fmt.Printf("error when writing stream handshake: %+v\n", err)
+		return nil, err
+	}
 
 	return n, nil
 }
@@ -122,5 +124,6 @@ func (p *Peer) NotifyClose() <-chan struct{} {
 
 func (p *Peer) Bye() error {
 	defer p.config.Conn.Close()
+	close(p.incoming)
 	return p.session.Close()
 }

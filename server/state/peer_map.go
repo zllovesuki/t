@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
 	"go.uber.org/zap"
@@ -13,91 +15,119 @@ import (
 )
 
 type PeerMap struct {
-	mu     sync.Mutex
-	self   uint64
-	peers  map[uint64]*multiplexer.Peer
-	logger *zap.Logger
+	self       uint64
+	peersMutex sync.Map
+	peers      sync.Map
+	logger     *zap.Logger
+	notify     chan *multiplexer.Peer
 }
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		peers:  make(map[uint64]*multiplexer.Peer),
+		notify: make(chan *multiplexer.Peer),
 		self:   self,
 		logger: logger,
 	}
 }
 
-func (s *PeerMap) NewPeer(ctx context.Context, conn net.Conn, peer uint64, client bool) (*multiplexer.Peer, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+type PeerConfig struct {
+	Conn      net.Conn
+	Peer      uint64
+	Initiator bool
+	Wait      time.Duration
+}
 
-	// fmt.Printf("NewPeer: %+v\n", peer)
+func (s *PeerMap) locker(peer uint64) (locker func(), unlocker func()) {
+	mu, _ := s.peersMutex.LoadOrStore(peer, &sync.Mutex{})
+	lock := mu.(*sync.Mutex)
+	return lock.Lock, lock.Unlock
+}
 
-	if _, ok := s.peers[peer]; ok {
-		return nil, errors.New("already have session with this pair")
+func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
+	lock, unlock := s.locker(conf.Peer)
+	lock()
+	defer unlock()
+
+	if _, ok := s.peers.Load(conf.Peer); ok {
+		return errors.New("already have session with this peer")
 	}
-
-	// fmt.Print("creating new session\n")
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
-		Conn:      conn,
-		Initiator: client,
-		Peer:      peer,
+		Conn:      conf.Conn,
+		Initiator: conf.Initiator,
+		Peer:      conf.Peer,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	s.peers[peer] = p
 
-	s.logger.Info("peer registered", zap.Uint64("peerID", peer))
+	d, err := p.Ping()
+	if err != nil {
+		return errors.Wrap(err, "cannot ping peer")
+	}
 
-	return p, nil
+	s.logger.Info("RTT with Peer", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d))
+
+	select {
+	case <-p.NotifyClose():
+		return errors.New("peer closed after negotiation")
+	case <-time.After(conf.Wait):
+	}
+
+	s.logger.Info("peer registered", zap.Bool("initiator", conf.Initiator), zap.Uint64("peerID", conf.Peer))
+
+	s.peers.Store(conf.Peer, p)
+	s.notify <- p
+
+	return nil
+}
+
+func (s *PeerMap) Notify() <-chan *multiplexer.Peer {
+	return s.notify
 }
 
 func (s *PeerMap) Print() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	fmt.Printf("[pm] connected peers: %+v\n", s.peers)
-}
-
-func (s *PeerMap) Len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return len(s.peers)/2 + 1
+	peers := []string{}
+	s.peers.Range(func(key, value interface{}) bool {
+		peers = append(peers, fmt.Sprint(key.(uint64)))
+		return true
+	})
+	fmt.Printf("[pm] Connected peers: %s\n", strings.Join(peers, ", "))
 }
 
 func (s *PeerMap) Has(peer uint64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lock, unlock := s.locker(peer)
+	lock()
+	defer unlock()
 
-	_, ok := s.peers[peer]
+	_, ok := s.peers.Load(peer)
 
 	return ok
 }
 
 func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lock, unlock := s.locker(peer)
+	lock()
+	defer unlock()
 
-	if p, ok := s.peers[peer]; ok {
-		return p
+	if p, ok := s.peers.Load(peer); ok {
+		return p.(*multiplexer.Peer)
 	}
 
 	return nil
 }
 
 func (s *PeerMap) Remove(peer uint64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lock, unlock := s.locker(peer)
+	lock()
+	defer unlock()
 
-	p, ok := s.peers[peer]
+	p, ok := s.peers.Load(peer)
 	if !ok {
 		return nil
 	}
 
-	delete(s.peers, peer)
+	s.peers.Delete(peer)
 
-	return p.Bye()
+	return p.(*multiplexer.Peer).Bye()
 }

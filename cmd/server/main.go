@@ -18,6 +18,7 @@ var (
 	members    = flag.String("members", "", "comma seperated list of members")
 	ip         = flag.String("ip", "127.0.0.1", "node ip")
 	peerPort   = flag.Int("peerPort", 11111, "multiplexer peer port")
+	clientPort = flag.Int("clientPort", 9999, "port used for client")
 	gossipPort = flag.Int("gossipPort", 10101, "port used for memberlist")
 )
 
@@ -35,13 +36,20 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	addrStr := fmt.Sprintf("%s:%d", *ip, *peerPort)
-	listener, err := net.Listen("tcp", addrStr)
+	peerAddr := fmt.Sprintf("%s:0", *ip)
+	clientAddr := fmt.Sprintf("%s:%d", *ip, *clientPort)
+	peerListener, err := net.Listen("tcp", peerAddr)
 	if err != nil {
-		fmt.Printf("error listening: %+v\n", err)
+		fmt.Printf("error listening for peers: %+v\n", err)
 		return
 	}
-	defer listener.Close()
+	defer peerListener.Close()
+	clientListener, err := net.Listen("tcp", clientAddr)
+	if err != nil {
+		fmt.Printf("error listening for ckient: %+v\n", err)
+		return
+	}
+	defer clientListener.Close()
 
 	var gossipers []string
 	if len(*members) > 0 {
@@ -49,8 +57,9 @@ func main() {
 	}
 
 	s, err := server.New(server.Config{
-		Logger:   logger,
-		Listener: listener,
+		Logger:         logger,
+		PeerListener:   peerListener,
+		ClientListener: clientListener,
 		Gossip: struct {
 			IP      string
 			Port    int
@@ -65,10 +74,14 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Printf("%+v\n", string(s.Meta()))
+
 	fmt.Printf("server peerID: %d\n", s.PeerID())
 
-	go s.Start(ctx)
-	go s.Gossip(ctx)
+	s.Start(ctx)
+	if err := s.Gossip(ctx); err != nil {
+		panic(err)
+	}
 	go Gateway(ctx, s)
 
 	<-sigs
