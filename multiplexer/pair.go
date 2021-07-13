@@ -2,13 +2,17 @@ package multiplexer
 
 import "encoding/binary"
 
+const (
+	PairSize = 16
+)
+
 type Pair struct {
 	Source      uint64
 	Destination uint64
 }
 
 func (s *Pair) Pack() []byte {
-	b := make([]byte, 16)
+	b := make([]byte, PairSize)
 	binary.BigEndian.PutUint64(b[0:8], s.Source)
 	binary.BigEndian.PutUint64(b[8:16], s.Destination)
 	return b

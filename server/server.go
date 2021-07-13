@@ -155,13 +155,18 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	}()
 
 	var pair multiplexer.Pair
-	r := make([]byte, 16)
+	var read int
+	r := make([]byte, multiplexer.PairSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
-	_, err = conn.Read(r)
+	read, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
+		return
+	}
+	if read != multiplexer.PairSize {
+		err = errors.Errorf("invalid handshake length received from client: %d", read)
 		return
 	}
 	pair.Unpack(r)
@@ -170,12 +175,11 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 
 	logger.Info("handshake with client", zap.Any("peer", pair))
 
-	if pair.Source == 0 || pair.Source == pair.Destination {
+	if pair.Source == 0 ||
+		pair.Source == pair.Destination ||
+		pair.Destination != 0 ||
+		pair.Source == s.PeerID() {
 		err = errors.Errorf("invalid client handshake %+v", pair)
-		return
-	}
-	if pair.Source == s.PeerID() {
-		err = errors.Errorf("loop: connecting to ourself %+v", pair)
 		return
 	}
 
@@ -198,10 +202,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up client")
-		return
 	}
-
-	// s.clients.Print()
 }
 
 func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
@@ -216,14 +217,18 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 	}()
 
 	var pair multiplexer.Pair
-	r := make([]byte, 16)
+	var read int
+	r := make([]byte, multiplexer.PairSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
-	_, err = conn.Read(r)
+	read, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
 		return
+	}
+	if read != multiplexer.PairSize {
+		err = errors.Errorf("invalid handshake length received from peer: %d", read)
 	}
 	pair.Unpack(r)
 
@@ -231,12 +236,11 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 
 	logger.Info("handshake with peer", zap.Any("peer", pair))
 
-	if (pair.Source == 0 || pair.Destination == 0) || (pair.Source == pair.Destination) {
+	if (pair.Source == 0 || pair.Destination == 0) ||
+		(pair.Source == pair.Destination) ||
+		(pair.Destination != s.PeerID()) ||
+		pair.Source == s.PeerID() {
 		err = errors.Errorf("invalid peer handshake %+v", pair)
-		return
-	}
-	if pair.Source == s.PeerID() {
-		err = errors.Errorf("loop: connecting to ourself %+v", pair)
 		return
 	}
 
@@ -251,13 +255,10 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up peer")
-		return
 	}
-
-	// s.peers.Print()
 }
 
-func (s *Server) findPeer(pair multiplexer.Pair) *multiplexer.Peer {
+func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
 	// TODO(zllovesuki): Make the walk more efficient
 	clientPeers := s.peerGraph.GetEdges(pair.Destination)
 	if len(clientPeers) == 0 {
@@ -271,19 +272,31 @@ func (s *Server) findPeer(pair multiplexer.Pair) *multiplexer.Peer {
 		// can we find a peer that the client is connected to?
 		ourPeers := s.peerGraph.GetEdges(s.PeerID())
 		for _, ourPeer := range ourPeers {
-			if clientPeer == ourPeer {
-				return s.peers.Get(ourPeer)
+			if clientPeer != ourPeer {
+				continue
 			}
+			return s.peers.Get(ourPeer)
 		}
 	}
 	return nil
 }
 
 func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
-	p := s.findPeer(pair)
+	p := s.findPath(pair)
 	if p == nil {
 		return errors.Errorf("destination %d not found among peers", pair.Destination)
 	}
-	go p.Bidirectional(ctx, conn, pair)
+	errCh, err := p.Bidirectional(ctx, conn, pair)
+	if err != nil {
+		return err
+	}
+	go func(ch <-chan error) {
+		for e := range ch {
+			if multiplexer.IsTimeout(e) {
+				continue
+			}
+			s.logger.Error("unexpected error in Bidirectional", zap.Error(e), zap.Any("pair", pair))
+		}
+	}(errCh)
 	return nil
 }

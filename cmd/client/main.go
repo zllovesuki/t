@@ -88,7 +88,16 @@ func main() {
 				fmt.Printf("error connecting to %s: %+v\n", *forward, err)
 				return
 			}
-			go multiplexer.Connect(ctx, o, c.Conn)
+			fmt.Printf("x\n")
+			errCh := multiplexer.Connect(ctx, o, c.Conn)
+			go func() {
+				for e := range errCh {
+					if multiplexer.IsTimeout(e) {
+						continue
+					}
+					fmt.Printf("%+v\n", e)
+				}
+			}()
 		}
 	}()
 

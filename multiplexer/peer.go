@@ -2,7 +2,6 @@ package multiplexer
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 
@@ -60,11 +59,14 @@ func (p *Peer) Start(ctx context.Context) {
 
 func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {
 	var s Pair
-	buf := make([]byte, 16)
+	buf := make([]byte, PairSize)
 
-	_, err := conn.Read(buf)
+	read, err := conn.Read(buf)
+	// TODO(rchen): capture these errors
 	if err != nil {
-		fmt.Printf("error when reading stream handshake: %+v\n", err)
+		return
+	}
+	if read != PairSize {
 		return
 	}
 
@@ -87,35 +89,24 @@ func (p *Peer) Ping() (time.Duration, error) {
 	return p.session.Ping()
 }
 
-func (p *Peer) OpenNotify() (net.Conn, error) {
+func (p *Peer) Bidirectional(ctx context.Context, conn net.Conn, pair Pair) (<-chan error, error) {
 	n, err := p.session.Open()
 	if err != nil {
-		return nil, errors.Wrap(err, "opening stream")
-	}
-
-	pair := Pair{
-		Source:      0,
-		Destination: 0,
-	}
-	buf := pair.Pack()
-	if _, err := n.Write(buf); err != nil {
-		fmt.Printf("error when writing stream handshake: %+v\n", err)
-		return nil, err
-	}
-
-	return n, nil
-}
-
-func (p *Peer) Bidirectional(ctx context.Context, conn net.Conn, pair Pair) {
-	n, err := p.session.Open()
-	if err != nil {
-		return
+		return nil, errors.Wrap(err, "opening new stream")
 	}
 
 	buf := pair.Pack()
-	n.Write(buf)
+	written, err := n.Write(buf)
+	if err != nil {
+		return nil, errors.Wrap(err, "writing stream handshake")
+	}
+	if written != PairSize {
+		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
+	}
 
-	Connect(ctx, n, conn)
+	errCh := Connect(ctx, n, conn)
+
+	return errCh, nil
 }
 
 func (p *Peer) Handle(ctx context.Context) <-chan StreamPair {

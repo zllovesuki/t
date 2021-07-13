@@ -51,8 +51,8 @@ func (p *PeerGraph) RemovePeer(peer uint64) {
 	var length int
 	for _, neighbor := range p.edges[peer] {
 		for i, d := range p.edges[neighbor] {
-			length = len(p.edges[neighbor])
 			if d == peer {
+				length = len(p.edges[neighbor])
 				p.edges[neighbor][i] = p.edges[neighbor][length-1]
 				p.edges[neighbor] = p.edges[neighbor][:length-1]
 			}
@@ -60,6 +60,9 @@ func (p *PeerGraph) RemovePeer(peer uint64) {
 	}
 	delete(p.edges, peer)
 	p.mu.Unlock()
+}
+
+func (p *PeerGraph) Merge(c ConnectedClients) {
 }
 
 func (p *PeerGraph) String() string {

@@ -95,18 +95,17 @@ func (s *Server) NodeMeta(limit int) []byte {
 }
 
 func (s *Server) LocalState(join bool) []byte {
-	// c := state.ConnectedClients{
-	// 	Peer:    s.PeerID(),
-	// 	Clients: s.clients.Snapshot(),
-	// }
-	// return c.Pack()
-	return nil
+	c := state.ConnectedClients{
+		Peer:    s.PeerID(),
+		Clients: s.clients.Snapshot(),
+	}
+	return c.Pack()
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
-	// var c state.ConnectedClients
-	// c.Unpack(buf)
-	// fmt.Printf("remote state: %+v\n", c)
+	var c state.ConnectedClients
+	c.Unpack(buf)
+	s.peerGraph.Merge(c)
 }
 
 func (s *Server) NotifyMsg(msg []byte) {
@@ -169,9 +168,6 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		Initiator: true,
 		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
 	})
-	if err != nil {
-		return
-	}
 }
 
 func (s *Server) removePeer(ctx context.Context, m Meta) {
@@ -182,6 +178,5 @@ func (s *Server) removePeer(ctx context.Context, m Meta) {
 	}
 	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
 	s.peers.Remove(p.Peer())
-	s.peers.Print()
 	s.peerGraph.RemovePeer(p.Peer())
 }
