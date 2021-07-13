@@ -95,30 +95,24 @@ func (s *Server) NodeMeta(limit int) []byte {
 }
 
 func (s *Server) LocalState(join bool) []byte {
-	// s.logger.Info("LocalState invoked", zap.Bool("join", join))
-	c := state.ConnectedClients{
-		Peer:    s.PeerID(),
-		Clients: s.clients.Snapshot(),
-	}
-	return c.Pack()
+	// c := state.ConnectedClients{
+	// 	Peer:    s.PeerID(),
+	// 	Clients: s.clients.Snapshot(),
+	// }
+	// return c.Pack()
+	return nil
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
-	// s.logger.Info("MergeRemoteState invoked", zap.Bool("join", join))
-	var c state.ConnectedClients
-	c.Unpack(buf)
-	fmt.Printf("remote state: %+v\n", c)
+	// var c state.ConnectedClients
+	// c.Unpack(buf)
+	// fmt.Printf("remote state: %+v\n", c)
 }
 
 func (s *Server) NotifyMsg(msg []byte) {
 	var c state.ClientUpdate
 	c.Unpack(msg)
 	s.updatesCh <- c
-	// spread the words
-	if c.Counter < uint64(s.peers.Len()) {
-		c.Counter++
-		s.broadcasts.QueueBroadcast(&c)
-	}
 }
 
 func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
@@ -133,7 +127,7 @@ func (s *Server) checkRetry(ctx context.Context, m Meta) {
 			s.logger.Error("handshake retry attempts exhausted", zap.Any("meta", m))
 			return
 		}
-		time.Sleep(time.Second * time.Duration(rand.Intn(3)))
+		time.Sleep(time.Second * time.Duration(rand.Intn(3)+1))
 		m.retry++
 		s.logger.Warn("peer handshake deadlock detected, retrying", zap.Any("meta", m))
 		go s.connectPeer(ctx, m)
@@ -173,7 +167,7 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		Conn:      conn,
 		Peer:      m.PeerID,
 		Initiator: true,
-		Wait:      time.Second * time.Duration(rand.Intn(3)),
+		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
 	})
 	if err != nil {
 		return
@@ -190,7 +184,7 @@ func (s *Server) removePeer(ctx context.Context, m Meta) {
 		return
 	}
 	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
-	s.remoteClients.RemovePeer(p.Peer())
 	s.peers.Remove(p.Peer())
 	s.peers.Print()
+	s.peerGraph.RemovePeer(p.Peer())
 }

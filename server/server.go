@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/server/graph"
 	"github.com/zllovesuki/t/server/state"
 	"go.uber.org/zap"
 
@@ -27,7 +28,7 @@ type Server struct {
 	meta           Meta
 	peers          *state.PeerMap
 	clients        *state.PeerMap
-	remoteClients  *state.ClientMap
+	peerGraph      *graph.PeerGraph
 	peerListner    net.Listener
 	clientListener net.Listener
 	logger         *zap.Logger
@@ -56,7 +57,8 @@ func New(conf Config) (*Server, error) {
 
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
-	rcMap := state.NewClientMap(self)
+	pg := graph.NewPeerGraph()
+	pg.AddPeer(self)
 
 	s := &Server{
 		meta: Meta{
@@ -66,7 +68,7 @@ func New(conf Config) (*Server, error) {
 		config:         conf,
 		peers:          pMap,
 		clients:        cMap,
-		remoteClients:  rcMap,
+		peerGraph:      pg,
 		id:             self,
 		peerListner:    conf.PeerListener,
 		clientListener: conf.ClientListener,
@@ -98,6 +100,16 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) {
 	s.parentCtx = ctx
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			return
+	// 		case <-time.After(time.Second * 10):
+	// 			fmt.Printf("peerGraph:\n%+v\n", s.peerGraph)
+	// 		}
+	// 	}
+	// }()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
@@ -191,7 +203,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 		return
 	}
 
-	s.clients.Print()
+	// s.clients.Print()
 }
 
 func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
@@ -237,31 +249,40 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,
-		Wait:      time.Second * time.Duration(rand.Intn(3)),
+		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up peer")
 		return
 	}
 
-	s.peers.Print()
+	// s.peers.Print()
 }
 
-func (s *Server) findSession(pair multiplexer.Pair) *multiplexer.Peer {
-	// is the client connected locally?
-	p := s.clients.Get(pair.Destination)
-	// can we find a peer that has the client?
-	if p == nil {
-		peer, ok := s.remoteClients.GetPeer(pair.Destination)
-		if ok {
-			p = s.peers.Get(peer)
+func (s *Server) findPeer(pair multiplexer.Pair) *multiplexer.Peer {
+	// TODO(zllovesuki): Make the walk more efficient
+	clientPeers := s.peerGraph.GetEdges(pair.Destination)
+	if len(clientPeers) == 0 {
+		return nil
+	}
+	for _, clientPeer := range clientPeers {
+		// is the client connected locally?
+		if clientPeer == s.PeerID() {
+			return s.clients.Get(pair.Destination)
+		}
+		// can we find a peer that the client is connected to?
+		ourPeers := s.peerGraph.GetEdges(s.PeerID())
+		for _, ourPeer := range ourPeers {
+			if clientPeer == ourPeer {
+				return s.peers.Get(ourPeer)
+			}
 		}
 	}
-	return p
+	return nil
 }
 
 func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
-	p := s.findSession(pair)
+	p := s.findPeer(pair)
 	if p == nil {
 		return errors.Errorf("destination %d not found among peers", pair.Destination)
 	}

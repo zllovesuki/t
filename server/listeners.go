@@ -20,6 +20,8 @@ func (s *Server) handlePeerEvents(ctx context.Context) {
 			}
 			s.logger.Info("exiting peer streams event", zap.Uint64("peerID", p.Peer()))
 		}(peer)
+		s.peerGraph.AddPeer(peer.Peer())
+		s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
 	}
 }
 
@@ -33,6 +35,8 @@ func (s *Server) handleClientEvents(ctx context.Context) {
 				Counter:   0,
 			}
 			s.broadcasts.QueueBroadcast(update)
+			s.peerGraph.AddPeer(peer.Peer())
+			s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
 		}(peer)
 		go func(p *multiplexer.Peer) {
 			update := &state.ClientUpdate{
@@ -50,6 +54,7 @@ func (s *Server) handleClientEvents(ctx context.Context) {
 					s.logger.Info("removing disconnected client", zap.Uint64("peerID", p.Peer()))
 					s.clients.Remove(p.Peer())
 					s.broadcasts.QueueBroadcast(update)
+					s.peerGraph.RemovePeer(p.Peer())
 					return
 				}
 			}
@@ -62,12 +67,24 @@ func (s *Server) handleClientEvents(ctx context.Context) {
 func (s *Server) handleNotify(ctx context.Context) {
 	for x := range s.updatesCh {
 		s.logger.Info("gossip: client update", zap.Any("update", x))
-		switch x.Connected {
-		case true:
-			s.remoteClients.Put(x.Client, x.Peer)
-		case false:
-			s.remoteClients.RemoveClient(x.Client)
+		if x.Peer != s.PeerID() {
+			switch x.Connected {
+			case true:
+				if !s.peerGraph.HasPeer(x.Client) {
+					s.peerGraph.AddPeer(x.Client)
+					s.peerGraph.AddEdge(x.Peer, x.Client)
+					x.Counter++
+				}
+			case false:
+				if s.peerGraph.HasPeer(x.Client) {
+					s.peerGraph.RemovePeer(x.Client)
+					x.Counter++
+				}
+			}
 		}
-		s.remoteClients.Print()
+		if x.Counter < uint64(s.peers.Len()) {
+			b := x
+			s.broadcasts.QueueBroadcast(&b)
+		}
 	}
 }

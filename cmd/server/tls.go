@@ -57,7 +57,7 @@ func handleTLS(ctx context.Context, s *server.Server, logger *zap.Logger, conn *
 	h := fnv.New64a()
 	h.Write([]byte(xd[0]))
 	clientID = h.Sum64()
-	err = s.Open(ctx, conn, multiplexer.Pair{
+	err = s.Forward(ctx, conn, multiplexer.Pair{
 		Source:      s.PeerID(),
 		Destination: clientID,
 	})

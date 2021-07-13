@@ -26,7 +26,7 @@ type PeerMap struct {
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
 		peersMutex: NewRing(73),
-		notify:     make(chan *multiplexer.Peer),
+		notify:     make(chan *multiplexer.Peer, 16),
 		self:       self,
 		logger:     logger,
 		num:        new(uint64),
