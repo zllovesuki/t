@@ -20,7 +20,6 @@ func (s *Server) handlePeerEvents(ctx context.Context) {
 			}
 			s.logger.Info("exiting peer streams event", zap.Uint64("peerID", p.Peer()))
 		}(peer)
-		s.peerGraph.AddPeer(peer.Peer())
 		s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
 	}
 }
@@ -35,7 +34,6 @@ func (s *Server) handleClientEvents(ctx context.Context) {
 				Counter:   0,
 			}
 			s.broadcasts.QueueBroadcast(update)
-			s.peerGraph.AddPeer(peer.Peer())
 			s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
 		}(peer)
 		go func(p *multiplexer.Peer) {
@@ -71,7 +69,6 @@ func (s *Server) handleNotify(ctx context.Context) {
 			switch x.Connected {
 			case true:
 				if !s.peerGraph.HasPeer(x.Client) {
-					s.peerGraph.AddPeer(x.Client)
 					s.peerGraph.AddEdge(x.Peer, x.Client)
 					x.Counter++
 				}

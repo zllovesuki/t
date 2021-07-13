@@ -10,7 +10,6 @@ import (
 
 	"github.com/hashicorp/memberlist"
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/server/graph"
 	"github.com/zllovesuki/t/server/state"
 	"go.uber.org/zap"
 
@@ -28,7 +27,7 @@ type Server struct {
 	meta           Meta
 	peers          *state.PeerMap
 	clients        *state.PeerMap
-	peerGraph      *graph.PeerGraph
+	peerGraph      *state.PeerGraph
 	peerListner    net.Listener
 	clientListener net.Listener
 	logger         *zap.Logger
@@ -57,8 +56,7 @@ func New(conf Config) (*Server, error) {
 
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
-	pg := graph.NewPeerGraph()
-	pg.AddPeer(self)
+	pg := state.NewPeerGraph(self)
 
 	s := &Server{
 		meta: Meta{
@@ -100,16 +98,16 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) {
 	s.parentCtx = ctx
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case <-ctx.Done():
-	// 			return
-	// 		case <-time.After(time.Second * 10):
-	// 			fmt.Printf("peerGraph:\n%+v\n", s.peerGraph)
-	// 		}
-	// 	}
-	// }()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t := <-time.After(time.Second * 15):
+				fmt.Printf("peerGraph at time %s:\n%+v\n", t.Format(time.RFC3339), s.peerGraph)
+			}
+		}
+	}()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
@@ -214,7 +212,7 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 			return
 		}
 		logger.Error("error during peer handshake", zap.Error(err))
-		// conn.Close()
+		conn.Close()
 	}()
 
 	var pair multiplexer.Pair

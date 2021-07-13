@@ -127,7 +127,7 @@ func (s *Server) checkRetry(ctx context.Context, m Meta) {
 			s.logger.Error("handshake retry attempts exhausted", zap.Any("meta", m))
 			return
 		}
-		time.Sleep(time.Second * time.Duration(rand.Intn(3)+1))
+		time.Sleep(time.Second * time.Duration(rand.Intn(5)+1))
 		m.retry++
 		s.logger.Warn("peer handshake deadlock detected, retrying", zap.Any("meta", m))
 		go s.connectPeer(ctx, m)
@@ -172,9 +172,6 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 	if err != nil {
 		return
 	}
-
-	s.peers.Print()
-
 }
 
 func (s *Server) removePeer(ctx context.Context, m Meta) {
