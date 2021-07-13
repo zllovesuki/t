@@ -10,9 +10,10 @@ import (
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server"
+	"go.uber.org/zap"
 )
 
-func Gateway(ctx context.Context, s *server.Server) {
+func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server) {
 	cert, err := tls.LoadX509KeyPair("tls/dev.pem", "tls/dev-key.pem")
 	if err != nil {
 		panic(err)
@@ -34,16 +35,17 @@ func Gateway(ctx context.Context, s *server.Server) {
 			return
 		}
 		tconn := conn.(*tls.Conn)
-		go handleTLS(ctx, s, tconn)
+		go handleTLS(ctx, s, logger, tconn)
 	}
 }
 
-func handleTLS(ctx context.Context, s *server.Server, conn *tls.Conn) {
+func handleTLS(ctx context.Context, s *server.Server, logger *zap.Logger, conn *tls.Conn) {
 	var err error
 	var clientID uint64
 	defer func() {
 		if err != nil {
-			fmt.Printf("error in connection: %+v\n", err)
+			logger.Error("connecting", zap.Error(err))
+			conn.Close()
 		}
 	}()
 	err = conn.Handshake()
@@ -59,7 +61,4 @@ func handleTLS(ctx context.Context, s *server.Server, conn *tls.Conn) {
 		Source:      s.PeerID(),
 		Destination: clientID,
 	})
-	if err != nil {
-		conn.Close()
-	}
 }

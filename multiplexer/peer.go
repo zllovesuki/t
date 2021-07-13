@@ -44,7 +44,7 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 	return &Peer{
 		session:  session,
 		config:   config,
-		incoming: make(chan StreamPair, 5),
+		incoming: make(chan StreamPair, 32),
 	}, nil
 }
 
@@ -73,6 +73,10 @@ func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {
 		Pair: s,
 		Conn: conn,
 	}
+}
+
+func (p *Peer) Initiator() bool {
+	return p.config.Initiator
 }
 
 func (p *Peer) Peer() uint64 {

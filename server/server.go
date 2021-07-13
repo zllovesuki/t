@@ -21,20 +21,20 @@ var (
 )
 
 type Server struct {
-	parentCtx        context.Context
-	id               uint64
-	meta             Meta
-	peers            *state.PeerMap
-	clients          *state.PeerMap
-	remoteClients    *state.ClientMap
-	notifier         *state.Notifier
-	peerListner      net.Listener
-	clientListener   net.Listener
-	logger           *zap.Logger
-	gossip           *memberlist.Memberlist
-	gossipCfg        *memberlist.Config
-	config           Config
-	peerConnectQueue chan Meta
+	parentCtx      context.Context
+	config         Config
+	id             uint64
+	meta           Meta
+	peers          *state.PeerMap
+	clients        *state.PeerMap
+	remoteClients  *state.ClientMap
+	peerListner    net.Listener
+	clientListener net.Listener
+	logger         *zap.Logger
+	gossip         *memberlist.Memberlist
+	gossipCfg      *memberlist.Config
+	broadcasts     *memberlist.TransmitLimitedQueue
+	updatesCh      chan state.ClientUpdate
 }
 
 type Config struct {
@@ -63,16 +63,22 @@ func New(conf Config) (*Server, error) {
 			PeerID:      self,
 			Multiplexer: fmt.Sprintf("%s:%d", addr.IP, addr.Port),
 		},
-		peers:            pMap,
-		clients:          cMap,
-		remoteClients:    rcMap,
-		notifier:         state.NewNotifer(),
-		id:               self,
-		peerListner:      conf.PeerListener,
-		clientListener:   conf.ClientListener,
-		logger:           conf.Logger,
-		config:           conf,
-		peerConnectQueue: make(chan Meta, 16),
+		config:         conf,
+		peers:          pMap,
+		clients:        cMap,
+		remoteClients:  rcMap,
+		id:             self,
+		peerListner:    conf.PeerListener,
+		clientListener: conf.ClientListener,
+		logger:         conf.Logger,
+		updatesCh:      make(chan state.ClientUpdate, 16),
+		broadcasts: &memberlist.TransmitLimitedQueue{
+			NumNodes: func() int {
+				// include ourself
+				return pMap.Len() + 1
+			},
+			RetransmitMult: 1,
+		},
 	}
 
 	c := memberlist.DefaultWANConfig()
@@ -92,15 +98,6 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) {
 	s.parentCtx = ctx
-	// go func() {
-	// 	for {
-	// 		<-time.After(time.Second * 10)
-	// 		fmt.Printf("%d\n", s.PeerID())
-	// 		s.peers.Print()
-	// 		s.clients.Print()
-	// 		s.remoteClients.Print()
-	// 	}
-	// }()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
@@ -125,7 +122,7 @@ func (s *Server) Start(ctx context.Context) {
 	}()
 	go s.handleClientEvents(ctx)
 	go s.handlePeerEvents(ctx)
-	go s.handlePeerConnects(ctx)
+	go s.handleNotify(ctx)
 }
 
 func (s *Server) PeerID() uint64 {
@@ -150,8 +147,8 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	var pair multiplexer.Pair
 	r := make([]byte, 16)
 
-	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
-	conn.SetWriteDeadline(time.Now().Add(time.Second * 3))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
 	_, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
@@ -187,7 +184,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,
-		Wait:      time.Second * 1,
+		Wait:      time.Second,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up client")
@@ -211,8 +208,8 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 	var pair multiplexer.Pair
 	r := make([]byte, 16)
 
-	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
 	_, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
@@ -240,7 +237,7 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,
-		Wait:      time.Second,
+		Wait:      time.Second * time.Duration(rand.Intn(3)),
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up peer")
@@ -255,18 +252,19 @@ func (s *Server) findSession(pair multiplexer.Pair) *multiplexer.Peer {
 	p := s.clients.Get(pair.Destination)
 	// can we find a peer that has the client?
 	if p == nil {
-		peer := s.remoteClients.GetPeer(pair.Destination)
-		p = s.peers.Get(peer)
+		peer, ok := s.remoteClients.GetPeer(pair.Destination)
+		if ok {
+			p = s.peers.Get(peer)
+		}
 	}
 	return p
 }
 
-func (s *Server) Open(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
+func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
 	p := s.findSession(pair)
 	if p == nil {
 		return errors.Errorf("destination %d not found among peers", pair.Destination)
 	}
-	s.logger.Info("forwarding stream", zap.Any("peer", pair))
 	go p.Bidirectional(ctx, conn, pair)
 	return nil
 }

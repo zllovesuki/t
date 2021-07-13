@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"time"
 
@@ -39,6 +40,8 @@ func (s *Server) Gossip(ctx context.Context) error {
 	return nil
 }
 
+// ======== Membership Changes ========
+
 var _ memberlist.EventDelegate = &Server{}
 
 func (s *Server) NotifyJoin(node *memberlist.Node) {
@@ -57,7 +60,10 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 
 	s.logger.Info("new peer discovered via gossip", zap.Any("meta", m))
 
-	s.peerConnectQueue <- m
+	if s.peers.Has(m.PeerID) {
+		return
+	}
+	go s.connectPeer(s.parentCtx, m)
 }
 
 func (s *Server) NotifyLeave(node *memberlist.Node) {
@@ -80,18 +86,58 @@ func (s *Server) NotifyLeave(node *memberlist.Node) {
 func (s *Server) NotifyUpdate(node *memberlist.Node) {
 }
 
+// ======== Data Exchange ========
+
+var _ memberlist.Delegate = &Server{}
+
 func (s *Server) NodeMeta(limit int) []byte {
 	return s.Meta()
 }
+
 func (s *Server) LocalState(join bool) []byte {
-	return nil
+	// s.logger.Info("LocalState invoked", zap.Bool("join", join))
+	c := state.ConnectedClients{
+		Peer:    s.PeerID(),
+		Clients: s.clients.Snapshot(),
+	}
+	return c.Pack()
 }
-func (s *Server) NotifyMsg(msg []byte) {
-}
-func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
-	return nil
-}
+
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
+	// s.logger.Info("MergeRemoteState invoked", zap.Bool("join", join))
+	var c state.ConnectedClients
+	c.Unpack(buf)
+	fmt.Printf("remote state: %+v\n", c)
+}
+
+func (s *Server) NotifyMsg(msg []byte) {
+	var c state.ClientUpdate
+	c.Unpack(msg)
+	s.updatesCh <- c
+	// spread the words
+	if c.Counter < uint64(s.peers.Len()) {
+		c.Counter++
+		s.broadcasts.QueueBroadcast(&c)
+	}
+}
+
+func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
+	return s.broadcasts.GetBroadcasts(overhead, limit)
+}
+
+// ======== Gossip Helpers ========
+
+func (s *Server) checkRetry(ctx context.Context, m Meta) {
+	if !s.peers.Has(m.PeerID) {
+		if m.retry > 2 {
+			s.logger.Error("handshake retry attempts exhausted", zap.Any("meta", m))
+			return
+		}
+		time.Sleep(time.Second * time.Duration(rand.Intn(3)))
+		m.retry++
+		s.logger.Warn("peer handshake deadlock detected, retrying", zap.Any("meta", m))
+		go s.connectPeer(ctx, m)
+	}
 }
 
 func (s *Server) connectPeer(ctx context.Context, m Meta) {
@@ -101,7 +147,7 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 
 	conn, err = net.Dial("tcp", m.Multiplexer)
 	if err != nil {
-		logger.Error("opening multiplexer connection", zap.Error(err))
+		logger.Error("opening tcp connection", zap.Error(err))
 		return
 	}
 
@@ -109,8 +155,9 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		if err == nil {
 			return
 		}
-		conn.Close()
 		logger.Error("connecting to peer", zap.Error(err))
+		conn.Close()
+		s.checkRetry(ctx, m)
 	}()
 
 	logger.Info("initiating handshake with peer")
@@ -126,7 +173,7 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		Conn:      conn,
 		Peer:      m.PeerID,
 		Initiator: true,
-		Wait:      time.Second * 3,
+		Wait:      time.Second * time.Duration(rand.Intn(3)),
 	})
 	if err != nil {
 		return
@@ -143,7 +190,6 @@ func (s *Server) removePeer(ctx context.Context, m Meta) {
 		return
 	}
 	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
-	s.notifier.Remove(p.Peer())
 	s.remoteClients.RemovePeer(p.Peer())
 	s.peers.Remove(p.Peer())
 	s.peers.Print()

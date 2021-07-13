@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,7 +25,7 @@ type PeerMap struct {
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		peersMutex: NewRing(43),
+		peersMutex: NewRing(73),
 		notify:     make(chan *multiplexer.Peer),
 		self:       self,
 		logger:     logger,
@@ -48,11 +47,10 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 		rUnlock()
 		return errors.New("already have session with this peer")
 	}
-
 	rUnlock()
+
 	unlock := s.peersMutex.Lock(conf.Peer)
 	defer unlock()
-
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
 		Conn:      conf.Conn,
 		Initiator: conf.Initiator,
@@ -88,17 +86,25 @@ func (s *PeerMap) Notify() <-chan *multiplexer.Peer {
 	return s.notify
 }
 
-func (s *PeerMap) Len() uint64 {
-	return atomic.LoadUint64(s.num)
+func (s *PeerMap) Len() int {
+	return int(atomic.LoadUint64(s.num))
 }
 
 func (s *PeerMap) Print() {
-	peers := []string{}
+	peers := s.Snapshot()
+	fmt.Printf("[pm] Connected peers: %s\n", fmt.Sprint(peers))
+}
+
+func (s *PeerMap) Snapshot() []uint64 {
+	peers := []uint64{}
 	s.peers.Range(func(key, value interface{}) bool {
-		peers = append(peers, fmt.Sprint(key.(uint64)))
+		if value == nil {
+			return true
+		}
+		peers = append(peers, key.(uint64))
 		return true
 	})
-	fmt.Printf("[pm] Connected peers: %s\n", strings.Join(peers, ", "))
+	return peers
 }
 
 func (s *PeerMap) Has(peer uint64) bool {

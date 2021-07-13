@@ -82,7 +82,7 @@ func main() {
 	if err := s.Gossip(ctx); err != nil {
 		panic(err)
 	}
-	go Gateway(ctx, s)
+	go Gateway(ctx, logger, s)
 
 	<-sigs
 }

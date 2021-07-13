@@ -5,6 +5,7 @@ import "encoding/json"
 type Meta struct {
 	Multiplexer string
 	PeerID      uint64
+	retry       int64
 }
 
 func (m *Meta) Pack() []byte {
