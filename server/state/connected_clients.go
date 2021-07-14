@@ -2,6 +2,9 @@ package state
 
 import "encoding/binary"
 
+// ConnectedClients is used when memberlist does TCP push/pull
+// state synchronization. It notifies our peers about the list of
+// clients that we are connected to.
 type ConnectedClients struct {
 	Peer    uint64
 	Clients []uint64
@@ -30,4 +33,12 @@ func (c *ConnectedClients) Unpack(b []byte) {
 	for i := uint64(0); i < len; i++ {
 		c.Clients[i] = binary.BigEndian.Uint64(b[(2+i)*8 : (3+i)*8])
 	}
+}
+
+func (c *ConnectedClients) Ring() uint64 {
+	ring := c.Peer
+	for _, p := range c.Clients {
+		ring ^= p
+	}
+	return ring
 }

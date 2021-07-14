@@ -18,70 +18,40 @@ func (s *Server) handlePeerEvents(ctx context.Context) {
 					s.logger.Error("forwarding stream", zap.Error(err), zap.Uint64("peerID", p.Peer()), zap.Any("paid", c.Pair))
 				}
 			}
-			s.logger.Info("exiting peer streams event", zap.Uint64("peerID", p.Peer()))
+			s.logger.Debug("exiting peer streams event", zap.Uint64("peerID", p.Peer()))
 		}(peer)
-		s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
+		s.peerGraph.AddEdges(peer.Peer(), s.PeerID())
 	}
 }
 
 func (s *Server) handleClientEvents(ctx context.Context) {
 	for peer := range s.clients.Notify() {
 		go func(p *multiplexer.Peer) {
-			update := &state.ClientUpdate{
-				Peer:      s.PeerID(),
-				Client:    p.Peer(),
-				Connected: true,
-				Counter:   0,
-			}
-			s.broadcasts.QueueBroadcast(update)
-			s.peerGraph.AddEdge(peer.Peer(), s.PeerID())
+			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
 		}(peer)
 		go func(p *multiplexer.Peer) {
-			update := &state.ClientUpdate{
-				Peer:      s.PeerID(),
-				Client:    p.Peer(),
-				Connected: false,
-				Counter:   0,
-			}
-			for {
-				select {
-				case <-ctx.Done():
-					s.broadcasts.QueueBroadcast(update)
-					return
-				case <-p.NotifyClose():
-					s.logger.Info("removing disconnected client", zap.Uint64("peerID", p.Peer()))
-					s.clients.Remove(p.Peer())
-					s.broadcasts.QueueBroadcast(update)
-					s.peerGraph.RemovePeer(p.Peer())
-					return
-				}
-			}
+			<-p.NotifyClose()
+			s.logger.Debug("removing disconnected client", zap.Uint64("peerID", p.Peer()))
+			s.clients.Remove(p.Peer())
+			s.peerGraph.RemovePeer(p.Peer())
 		}(peer)
 		// do not handle forward request from client
 		// go p.Start(ctx)
 	}
 }
 
-func (s *Server) handleNotify(ctx context.Context) {
+func (s *Server) handleMerge(ctx context.Context) {
 	for x := range s.updatesCh {
-		s.logger.Info("gossip: client update", zap.Any("update", x))
-		if x.Peer != s.PeerID() {
-			switch x.Connected {
-			case true:
-				if !s.peerGraph.HasPeer(x.Client) {
-					s.peerGraph.AddEdge(x.Peer, x.Client)
-					x.Counter++
-				}
-			case false:
-				if s.peerGraph.HasPeer(x.Client) {
-					s.peerGraph.RemovePeer(x.Client)
-					x.Counter++
-				}
+		// because of the properties of our design:
+		// 1. client PeerIDs are unique across sessions
+		// 2. only a maximum of single hop is allowed inter-peers
+		// thus, we can replace our peer's peer graph with the incoming one
+		// if c.Ring() differs from the ring in our peer graph.
+		go func(u *state.ConnectedClients) {
+			s.logger.Debug("push/pull: processing state transfer", zap.Uint64("Peer", u.Peer))
+			if s.peerGraph.Replace(u) {
+				s.logger.Debug("push/pull: pear graph was updated", zap.Uint64("Peer", u.Peer))
 			}
-		}
-		if x.Counter < uint64(s.peers.Len()) {
-			b := x
-			s.broadcasts.QueueBroadcast(&b)
-		}
+		}(x)
 	}
 }

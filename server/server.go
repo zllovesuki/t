@@ -34,7 +34,7 @@ type Server struct {
 	gossip         *memberlist.Memberlist
 	gossipCfg      *memberlist.Config
 	broadcasts     *memberlist.TransmitLimitedQueue
-	updatesCh      chan state.ClientUpdate
+	updatesCh      chan *state.ConnectedClients
 }
 
 type Config struct {
@@ -71,7 +71,7 @@ func New(conf Config) (*Server, error) {
 		peerListner:    conf.PeerListener,
 		clientListener: conf.ClientListener,
 		logger:         conf.Logger,
-		updatesCh:      make(chan state.ClientUpdate, 16),
+		updatesCh:      make(chan *state.ConnectedClients, 16),
 		broadcasts: &memberlist.TransmitLimitedQueue{
 			NumNodes: func() int {
 				// include ourself
@@ -132,7 +132,7 @@ func (s *Server) Start(ctx context.Context) {
 	}()
 	go s.handleClientEvents(ctx)
 	go s.handlePeerEvents(ctx)
-	go s.handleNotify(ctx)
+	go s.handleMerge(ctx)
 }
 
 func (s *Server) PeerID() uint64 {
@@ -140,7 +140,8 @@ func (s *Server) PeerID() uint64 {
 }
 
 func (s *Server) Meta() []byte {
-	return s.meta.Pack()
+	m := s.meta
+	return m.Pack()
 }
 
 func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
@@ -173,7 +174,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 
 	logger = logger.With(zap.Uint64("peerID", pair.Source))
 
-	logger.Info("handshake with client", zap.Any("peer", pair))
+	logger.Debug("incoming handshake with client", zap.Any("peer", pair))
 
 	if pair.Source == 0 ||
 		pair.Source == pair.Destination ||
@@ -234,7 +235,7 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 
 	logger = logger.With(zap.Uint64("peerID", pair.Source))
 
-	logger.Info("handshake with peer", zap.Any("peer", pair))
+	logger.Debug("incoming handshake with peer", zap.Any("peer", pair))
 
 	if (pair.Source == 0 || pair.Destination == 0) ||
 		(pair.Source == pair.Destination) ||
@@ -259,7 +260,7 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 }
 
 func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
-	// TODO(zllovesuki): Make the walk more efficient
+	// does the destination exist in our peer graph?
 	clientPeers := s.peerGraph.GetEdges(pair.Destination)
 	if len(clientPeers) == 0 {
 		return nil
@@ -270,12 +271,8 @@ func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
 			return s.clients.Get(pair.Destination)
 		}
 		// can we find a peer that the client is connected to?
-		ourPeers := s.peerGraph.GetEdges(s.PeerID())
-		for _, ourPeer := range ourPeers {
-			if clientPeer != ourPeer {
-				continue
-			}
-			return s.peers.Get(ourPeer)
+		if p := s.peers.Get(clientPeer); p != nil {
+			return p
 		}
 	}
 	return nil

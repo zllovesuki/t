@@ -4,6 +4,10 @@ import (
 	"sync"
 )
 
+// RingMutex attempts to shard mutexes across a predefined number of mutexes, to
+// allow for a disjoint sets of keys to to obtain locks without guarding the
+// entire map. Note: this is best to be used with sync.Map, and the size
+// is best to be a prime number to reduce collisions.
 type RingMutex struct {
 	locks []sync.RWMutex
 	size  uint64

@@ -46,7 +46,7 @@ var _ memberlist.EventDelegate = &Server{}
 
 func (s *Server) NotifyJoin(node *memberlist.Node) {
 	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Info("gossip ourself, refusing")
+		s.logger.Debug("gossip ourself, refusing")
 		return
 	}
 	if node.Meta == nil {
@@ -68,7 +68,7 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 
 func (s *Server) NotifyLeave(node *memberlist.Node) {
 	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Info("gossip ourself, refusing")
+		s.logger.Debug("gossip ourself, refusing")
 		return
 	}
 
@@ -105,13 +105,10 @@ func (s *Server) LocalState(join bool) []byte {
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
 	var c state.ConnectedClients
 	c.Unpack(buf)
-	s.peerGraph.Merge(c)
+	s.updatesCh <- &c
 }
 
 func (s *Server) NotifyMsg(msg []byte) {
-	var c state.ClientUpdate
-	c.Unpack(msg)
-	s.updatesCh <- c
 }
 
 func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
@@ -128,6 +125,9 @@ func (s *Server) checkRetry(ctx context.Context, m Meta) {
 		}
 		time.Sleep(time.Second * time.Duration(rand.Intn(5)+1))
 		m.retry++
+		if s.peers.Has(m.PeerID) {
+			return
+		}
 		s.logger.Warn("peer handshake deadlock detected, retrying", zap.Any("meta", m))
 		go s.connectPeer(ctx, m)
 	}
@@ -153,7 +153,7 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		s.checkRetry(ctx, m)
 	}()
 
-	logger.Info("initiating handshake with peer")
+	logger.Debug("initiating handshake with peer")
 
 	pair := multiplexer.Pair{
 		Source:      s.PeerID(),
@@ -176,7 +176,7 @@ func (s *Server) removePeer(ctx context.Context, m Meta) {
 		s.logger.Error("removing a non-existent peer")
 		return
 	}
-	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
+	s.logger.Debug("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
 	s.peers.Remove(p.Peer())
 	s.peerGraph.RemovePeer(p.Peer())
 }
