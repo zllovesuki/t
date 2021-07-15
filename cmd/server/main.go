@@ -15,11 +15,12 @@ import (
 )
 
 var (
-	members    = flag.String("members", "", "comma seperated list of members")
-	ip         = flag.String("ip", "127.0.0.1", "node ip")
-	peerPort   = flag.Int("peerPort", 11111, "multiplexer peer port")
-	clientPort = flag.Int("clientPort", 9999, "port used for client")
-	gossipPort = flag.Int("gossipPort", 10101, "port used for memberlist")
+	members    = flag.String("members", "", "comma seperated list of existing peers")
+	ip         = flag.String("ip", "127.0.0.1", "publicly accessible IP for this peer")
+	webPort    = flag.Int("webPort", 1433, "port used to accept https requests for forwarding")
+	peerPort   = flag.Int("peerPort", 11111, "multiplexer port to be used by the peers")
+	clientPort = flag.Int("clientPort", 9999, "multiplexer port to be used by the clients")
+	gossipPort = flag.Int("gossipPort", 10101, "port to be used in gossip")
 )
 
 func main() {
@@ -36,14 +37,16 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	peerAddr := fmt.Sprintf("%s:0", *ip)
+	peerAddr := fmt.Sprintf("%s:%d", *ip, *peerPort)
 	clientAddr := fmt.Sprintf("%s:%d", *ip, *clientPort)
+
 	peerListener, err := net.Listen("tcp", peerAddr)
 	if err != nil {
 		fmt.Printf("error listening for peers: %+v\n", err)
 		return
 	}
 	defer peerListener.Close()
+
 	clientListener, err := net.Listen("tcp", clientAddr)
 	if err != nil {
 		fmt.Printf("error listening for ckient: %+v\n", err)
@@ -75,8 +78,6 @@ func main() {
 	}
 
 	fmt.Printf("%+v\n", string(s.Meta()))
-
-	fmt.Printf("server peerID: %d\n", s.PeerID())
 
 	s.Start(ctx)
 	if err := s.Gossip(ctx); err != nil {

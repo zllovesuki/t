@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"math/rand"
 	"net"
 	"os"
@@ -13,8 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sethvargo/go-diceware/diceware"
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/shared"
+
+	"github.com/sethvargo/go-diceware/diceware"
 )
 
 func init() {
@@ -26,15 +27,12 @@ var (
 	forward = flag.String("forward", "127.0.0.1:3000", "where to forward")
 )
 
-func getRandomPeerID() (string, uint64) {
+func getRandomName() string {
 	g, err := diceware.Generate(5)
 	if err != nil {
-		return "", 0
+		return ""
 	}
-	name := strings.Join(g, "-")
-	h := fnv.New64a()
-	h.Write([]byte(name))
-	return name, h.Sum64()
+	return strings.Join(g, "-")
 }
 
 func main() {
@@ -49,7 +47,8 @@ func main() {
 		return
 	}
 
-	name, peerID := getRandomPeerID()
+	name := getRandomName()
+	peerID := shared.PeerHash(name)
 
 	pair := multiplexer.Pair{
 		Source: peerID,
@@ -60,8 +59,6 @@ func main() {
 	connector.Read(buf)
 	pair.Unpack(buf)
 
-	fmt.Printf("pair: %+v\n", pair)
-
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
 		Conn:      connector,
 		Initiator: true,
@@ -69,9 +66,18 @@ func main() {
 	})
 	if err != nil {
 		fmt.Printf("error setting up peer: %+v\n", err)
+		return
 	}
 
-	fmt.Printf("%+v\n", name)
+	rtt, err := p.Ping()
+	if err != nil {
+		fmt.Printf("error checking connection: %+v\n", err)
+		return
+	}
+
+	fmt.Printf("peering: %+v\n", pair)
+	fmt.Printf("rtt time with server %s\n", rtt)
+	fmt.Printf("your hostname: %+v\n", name)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -79,6 +85,7 @@ func main() {
 	go p.Start(ctx)
 	go func() {
 		<-p.NotifyClose()
+		fmt.Printf("peer %d disconnected\n", p.Peer())
 		sigs <- syscall.SIGTERM
 	}()
 	go func() {
@@ -86,9 +93,8 @@ func main() {
 			o, err := net.Dial("tcp", *forward)
 			if err != nil {
 				fmt.Printf("error connecting to %s: %+v\n", *forward, err)
-				return
+				continue
 			}
-			fmt.Printf("x\n")
 			errCh := multiplexer.Connect(ctx, o, c.Conn)
 			go func() {
 				for e := range errCh {
