@@ -95,6 +95,9 @@ func (s *Server) NodeMeta(limit int) []byte {
 }
 
 func (s *Server) LocalState(join bool) []byte {
+	if join {
+		return nil
+	}
 	c := state.ConnectedClients{
 		Peer:    s.PeerID(),
 		Clients: s.clients.Snapshot(),
@@ -103,6 +106,9 @@ func (s *Server) LocalState(join bool) []byte {
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
+	if len(buf) == 0 || join {
+		return
+	}
 	var c state.ConnectedClients
 	c.Unpack(buf)
 	s.updatesCh <- &c
@@ -119,7 +125,7 @@ func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
 
 func (s *Server) checkRetry(ctx context.Context, m Meta) {
 	if !s.peers.Has(m.PeerID) {
-		if m.retry > 2 {
+		if m.retry > 5 {
 			s.logger.Error("handshake retry attempts exhausted", zap.Any("meta", m))
 			return
 		}

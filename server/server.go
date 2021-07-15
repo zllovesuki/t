@@ -86,6 +86,7 @@ func New(conf Config) (*Server, error) {
 	c.AdvertisePort = conf.Gossip.Port
 	c.BindAddr = conf.Gossip.IP
 	c.BindPort = conf.Gossip.Port
+	c.PushPullInterval = time.Second * 30 // faster convergence
 	c.Events = s
 	c.Delegate = s
 	c.Name = fmt.Sprint(self)
@@ -100,20 +101,15 @@ func (s *Server) Start(ctx context.Context) {
 	s.parentCtx = ctx
 	go func() {
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			case t := <-time.After(time.Second * 15):
-				fmt.Printf("peerGraph at time %s:\n%+v\n", t.Format(time.RFC3339), s.peerGraph)
-			}
+			<-time.After(time.Second * 15)
+			fmt.Printf("%+v\n", s.peerGraph)
 		}
 	}()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
-			// fmt.Printf("new connection\n")
 			if err != nil {
-				s.logger.Error("accepting TCP connection", zap.Error(err))
+				s.logger.Error("accepting TCP connection from peers", zap.Error(err))
 				return
 			}
 			go s.peerHandshake(ctx, conn)
@@ -122,9 +118,8 @@ func (s *Server) Start(ctx context.Context) {
 	go func() {
 		for {
 			conn, err := s.clientListener.Accept()
-			// fmt.Printf("new connection\n")
 			if err != nil {
-				s.logger.Error("accepting TCP connection", zap.Error(err))
+				s.logger.Error("accepting TCP connection from clients", zap.Error(err))
 				return
 			}
 			go s.clientHandshake(ctx, conn)
@@ -261,39 +256,27 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 
 func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
 	// does the destination exist in our peer graph?
-	clientPeers := s.peerGraph.GetEdges(pair.Destination)
-	if len(clientPeers) == 0 {
+	if !s.peerGraph.HasPeer(pair.Destination) {
 		return nil
 	}
-	for _, clientPeer := range clientPeers {
-		// is the client connected locally?
-		if clientPeer == s.PeerID() {
-			return s.clients.Get(pair.Destination)
-		}
-		// can we find a peer that the client is connected to?
-		if p := s.peers.Get(clientPeer); p != nil {
-			return p
-		}
+	// is the client connected locally?
+	if s.peerGraph.IsNeighbor(s.PeerID(), pair.Destination) {
+		return s.clients.Get(pair.Destination)
 	}
-	return nil
+	// TODO(zllovesuki): this allows for future rtt lookup for multi-peer client
+	// get a random peer from the graph
+	peers := s.peerGraph.GetEdges(pair.Destination)
+	return s.peers.Get(peers[rand.Intn(len(peers))])
 }
 
-func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) error {
+func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) (<-chan error, error) {
 	p := s.findPath(pair)
 	if p == nil {
-		return errors.Errorf("destination %d not found among peers", pair.Destination)
+		return nil, errors.Wrapf(ErrDestinationNotFound, "peer %d not found in peer graph", pair.Destination)
 	}
 	errCh, err := p.Bidirectional(ctx, conn, pair)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	go func(ch <-chan error) {
-		for e := range ch {
-			if multiplexer.IsTimeout(e) {
-				continue
-			}
-			s.logger.Error("unexpected error in Bidirectional", zap.Error(e), zap.Any("pair", pair))
-		}
-	}(errCh)
-	return nil
+	return errCh, nil
 }
