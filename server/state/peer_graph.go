@@ -34,6 +34,33 @@ func (p *PeerGraph) ring(peer uint64) uint64 {
 	return ring
 }
 
+func (p *PeerGraph) HasPeer(peer uint64) (has bool) {
+	p.mu.RLock()
+	_, has = p.edges[peer]
+	p.mu.RUnlock()
+	return
+}
+
+func (p *PeerGraph) IsNeighbor(src uint64, dst uint64) (has bool) {
+	p.mu.RLock()
+	for _, neighbor := range p.edges[src] {
+		if neighbor == dst {
+			p.mu.RUnlock()
+			has = true
+			return
+		}
+	}
+	for _, neighbor := range p.edges[dst] {
+		if neighbor == src {
+			p.mu.RUnlock()
+			has = true
+			return
+		}
+	}
+	p.mu.RUnlock()
+	return
+}
+
 func (p *PeerGraph) GetEdges(peer uint64) []uint64 {
 	p.mu.RLock()
 	peers := p.edges[peer]
@@ -66,13 +93,20 @@ func (p *PeerGraph) RemovePeer(peer uint64) {
 
 func (p *PeerGraph) removePeer(peer uint64) {
 	var length int
+	neighbors := make([]uint64, 0)
 	for _, neighbor := range p.edges[peer] {
 		for i, d := range p.edges[neighbor] {
 			if d == peer {
+				neighbors = append(neighbors, neighbor)
 				length = len(p.edges[neighbor])
 				p.edges[neighbor][i] = p.edges[neighbor][length-1]
 				p.edges[neighbor] = p.edges[neighbor][:length-1]
 			}
+		}
+	}
+	for _, neighbor := range neighbors {
+		if len(p.edges[neighbor]) == 0 && neighbor != p.self {
+			delete(p.edges, neighbor)
 		}
 	}
 	delete(p.edges, peer)
