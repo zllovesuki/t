@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -21,8 +23,10 @@ func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server) {
 	}
 
 	config := tls.Config{
-		Certificates: []tls.Certificate{cert},
-		Rand:         rand.Reader,
+		Certificates:             []tls.Certificate{cert},
+		Rand:                     rand.Reader,
+		NextProtos:               []string{"http/1.1"},
+		PreferServerCipherSuites: true,
 	}
 
 	xd, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", *ip, *webPort), &config)
@@ -41,51 +45,64 @@ func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server) {
 	}
 }
 
-const (
-	NotFound = "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nDestination not found. Propagation may take up to 2 minutes"
-	Timeout  = "HTTP/1.1 504 Gateway Timeout\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nDestination is taking too long to respond"
-)
+func WriteResponse(w net.Conn, statusCode int, message string) {
+	text := http.StatusText(statusCode)
+	w.Write([]byte("HTTP/1.1 "))
+	w.Write([]byte(fmt.Sprint(statusCode)))
+	w.Write([]byte(" "))
+	w.Write([]byte(text))
+	w.Write([]byte("\r\nContent-Type: text/plain; charset=utf-8"))
+	w.Write([]byte("\r\nConnection: close\r\n\r\n"))
+	w.Write([]byte(message))
+}
 
 func handleTLS(ctx context.Context, s *server.Server, logger *zap.Logger, conn *tls.Conn) {
-	var err error
-	var errCh <-chan error
-	defer func() {
-		if errors.Is(err, server.ErrDestinationNotFound) {
-			fmt.Fprint(conn, NotFound)
-			conn.CloseWrite()
-			return
-		}
-		if err != nil {
-			logger.Error("connecting", zap.Error(err))
-			conn.Close()
-		}
-	}()
-	err = conn.Handshake()
+	defer conn.CloseWrite()
+
+	err := conn.Handshake()
 	if err != nil {
 		logger.Error("handshake failed", zap.Error(err))
 		return
 	}
 
+	if !strings.HasSuffix(conn.ConnectionState().ServerName, "dev.n45.net") {
+		WriteResponse(conn, http.StatusForbidden, "Unauthroized peering server name")
+		return
+	}
 	xd := strings.Split(conn.ConnectionState().ServerName, ".")
 	clientID := shared.PeerHash(xd[0])
 	logger = logger.With(zap.Uint64("ClientID", clientID))
 
-	errCh, err = s.Forward(ctx, conn, multiplexer.Pair{
+	c, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh, err := s.Forward(c, conn, multiplexer.Pair{
 		Source:      s.PeerID(),
 		Destination: clientID,
 	})
-	go func() {
+	if errors.Is(err, server.ErrDestinationNotFound) {
+		WriteResponse(conn, http.StatusNotFound, "Destination not found. Propagation may take up to 2 minutes.")
+		return
+	}
+	if err != nil {
+		logger.Error("connecting", zap.Error(err))
+		WriteResponse(conn, http.StatusBadGateway, "An unexpected error has occurred while attempt to forward.")
+		return
+	}
+	sent := false
+	for {
 		select {
-		case <-ctx.Done():
+		case <-c.Done():
 			return
 		case err, ok := <-errCh:
-			if multiplexer.IsTimeout(err) {
-				fmt.Fprint(conn, Timeout)
-				conn.CloseWrite()
+			if !sent && multiplexer.IsTimeout(err) {
+				sent = true
+				WriteResponse(conn, http.StatusGatewayTimeout, "Destination is taking too long to respond.")
+				return
 			}
 			if !ok {
 				return
 			}
 		}
-	}()
+	}
 }

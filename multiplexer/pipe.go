@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zllovesuki/t/util"
+
 	"github.com/hashicorp/yamux"
 	"github.com/pkg/errors"
-	"github.com/zllovesuki/t/util"
 )
 
 type IdleTimeoutConn struct {
@@ -46,13 +47,14 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
+	// asymmetric timeout so upstream can get a timeout before downstream closes
 	tDst := &IdleTimeoutConn{
 		Conn:    dst,
 		Timeout: time.Second * 15,
 	}
 	tSrc := &IdleTimeoutConn{
 		Conn:    src,
-		Timeout: time.Second * 15,
+		Timeout: time.Second * 10,
 	}
 
 	wg.Add(2)
@@ -61,6 +63,8 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	go func() {
 		wg.Wait()
 		close(err)
+		dst.Close()
+		src.Close()
 	}()
 
 	return err

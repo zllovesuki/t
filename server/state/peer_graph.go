@@ -41,26 +41,6 @@ func (p *PeerGraph) HasPeer(peer uint64) (has bool) {
 	return
 }
 
-func (p *PeerGraph) IsNeighbor(src uint64, dst uint64) (has bool) {
-	p.mu.RLock()
-	for _, neighbor := range p.edges[src] {
-		if neighbor == dst {
-			p.mu.RUnlock()
-			has = true
-			return
-		}
-	}
-	for _, neighbor := range p.edges[dst] {
-		if neighbor == src {
-			p.mu.RUnlock()
-			has = true
-			return
-		}
-	}
-	p.mu.RUnlock()
-	return
-}
-
 func (p *PeerGraph) GetEdges(peer uint64) []uint64 {
 	p.mu.RLock()
 	peers := p.edges[peer]

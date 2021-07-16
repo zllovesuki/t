@@ -260,12 +260,15 @@ func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
 		return nil
 	}
 	// is the client connected locally?
-	if s.peerGraph.IsNeighbor(s.PeerID(), pair.Destination) {
-		return s.clients.Get(pair.Destination)
+	if p := s.clients.Get(pair.Destination); p != nil {
+		return p
 	}
 	// TODO(zllovesuki): this allows for future rtt lookup for multi-peer client
-	// get a random peer from the graph
+	// get a random peer from the graph, if any
 	peers := s.peerGraph.GetEdges(pair.Destination)
+	if len(peers) == 0 {
+		return nil
+	}
 	return s.peers.Get(peers[rand.Intn(len(peers))])
 }
 
@@ -274,9 +277,5 @@ func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pa
 	if p == nil {
 		return nil, errors.Wrapf(ErrDestinationNotFound, "peer %d not found in peer graph", pair.Destination)
 	}
-	errCh, err := p.Bidirectional(ctx, conn, pair)
-	if err != nil {
-		return nil, err
-	}
-	return errCh, nil
+	return p.Bidirectional(ctx, conn, pair)
 }

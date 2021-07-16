@@ -20,11 +20,13 @@ func (s *Server) handlePeerEvents(ctx context.Context) {
 		// listen for request for forwarding from peers
 		go func(p *multiplexer.Peer) {
 			for c := range p.Handle(ctx) {
-				s.Forward(ctx, c.Conn, c.Pair)
+				if _, err := s.Forward(ctx, c.Conn, c.Pair); err != nil {
+					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("pair", c.Pair))
+				}
 			}
-			s.logger.Debug("exiting peer streams event", zap.Uint64("peerID", p.Peer()))
+			s.logger.Debug("exiting peer streams handler", zap.Uint64("peerID", p.Peer()))
 		}(peer)
-		// handle forward request from client
+		// handle forward request from peers
 		go peer.Start(ctx)
 	}
 }
