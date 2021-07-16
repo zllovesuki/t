@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/yamux"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type StreamPair struct {
@@ -15,18 +16,36 @@ type StreamPair struct {
 }
 
 type Peer struct {
+	logger   *zap.Logger
 	session  *yamux.Session
 	config   PeerConfig
 	incoming chan StreamPair
 }
 
 type PeerConfig struct {
+	Logger    *zap.Logger
 	Conn      net.Conn
 	Initiator bool
 	Peer      uint64
 }
 
+func (p *PeerConfig) validate() error {
+	if p.Logger == nil {
+		return errors.New("nil logger is invalid")
+	}
+	if p.Conn == nil {
+		return errors.New("nil conn is invalid")
+	}
+	if p.Peer == 0 {
+		return errors.New("peer cannot be 0")
+	}
+	return nil
+}
+
 func NewPeer(config PeerConfig) (*Peer, error) {
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
 	var session *yamux.Session
 	var err error
 	if config.Initiator {
@@ -41,6 +60,7 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 	}
 
 	return &Peer{
+		logger:   config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator)),
 		session:  session,
 		config:   config,
 		incoming: make(chan StreamPair, 32),
@@ -51,6 +71,7 @@ func (p *Peer) Start(ctx context.Context) {
 	for {
 		conn, err := p.session.AcceptStream()
 		if err != nil {
+			p.logger.Error("accepting stream from peers", zap.Error(err))
 			return
 		}
 		go p.streamHandshake(ctx, conn)
@@ -62,11 +83,12 @@ func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {
 	buf := make([]byte, PairSize)
 
 	read, err := conn.Read(buf)
-	// TODO(rchen): capture these errors
 	if err != nil {
+		p.logger.Error("reading stream handshake", zap.Error(err))
 		return
 	}
 	if read != PairSize {
+		p.logger.Error("invalid handshake length", zap.Int("length", read))
 		return
 	}
 

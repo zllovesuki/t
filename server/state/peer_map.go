@@ -56,6 +56,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 	}
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
+		Logger:    s.logger,
 		Conn:      conf.Conn,
 		Initiator: conf.Initiator,
 		Peer:      conf.Peer,
