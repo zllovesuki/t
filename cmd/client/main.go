@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -17,8 +18,6 @@ import (
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/shared"
 	"go.uber.org/zap"
-
-	"github.com/sethvargo/go-diceware/diceware"
 )
 
 func init() {
@@ -29,14 +28,6 @@ var (
 	peer    = flag.String("peer", "127.0.0.1:11111", "server")
 	forward = flag.String("forward", "127.0.0.1:3000", "where to forward")
 )
-
-func getRandomName() string {
-	g, err := diceware.Generate(5)
-	if err != nil {
-		return ""
-	}
-	return strings.Join(g, "-")
-}
 
 func main() {
 	flag.Parse()
@@ -49,25 +40,41 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector, err := tls.Dial("tcp", *peer, &tls.Config{
-		InsecureSkipVerify: true,
-	})
+	connector, err := tls.Dial("tcp", *peer, nil)
 	if err != nil {
 		logger.Error("connecting to peer", zap.Error(err))
 		return
 	}
 
-	name := getRandomName()
-	peerID := shared.PeerHash(name)
-
-	pair := multiplexer.Pair{
-		Source: peerID,
-	}
+	pair := multiplexer.Pair{}
 	buf := pair.Pack()
-	connector.Write(buf)
+	n, err := connector.Write(buf)
+	if err != nil {
+		logger.Error("writing handshake to peer", zap.Error(err))
+		return
+	}
+	if n != multiplexer.PairSize {
+		logger.Error("invalid handshake length sent", zap.Int("length", n))
+		return
+	}
 
-	connector.Read(buf)
+	n, err = connector.Read(buf)
+	if err != nil {
+		logger.Error("reading handshake from peer", zap.Error(err))
+		return
+	}
+	if n != multiplexer.PairSize {
+		logger.Error("invalid handshake length received", zap.Int("length", n))
+		return
+	}
 	pair.Unpack(buf)
+
+	var g shared.GeneratedName
+	err = json.NewDecoder(connector).Decode(&g)
+	if err != nil {
+		logger.Error("unmarshaling generated name response")
+		return
+	}
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
 		Logger:    logger.With(zap.Uint64("PeerID", pair.Destination), zap.Bool("Initiator", true)),
@@ -89,7 +96,7 @@ func main() {
 	logger.Info("Peering established", zap.Any("pair", pair), zap.Duration("rtt", rtt))
 
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
-	fmt.Printf("Your Hostname: %+v\n", name)
+	fmt.Printf("Your Hostname: %+v\n", g.Hostname)
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 
 	sigs := make(chan os.Signal, 1)
