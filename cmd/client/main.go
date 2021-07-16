@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/shared"
+
 	"go.uber.org/zap"
 )
 
@@ -25,8 +28,8 @@ func init() {
 }
 
 var (
-	peer    = flag.String("peer", "127.0.0.1:11111", "server")
-	forward = flag.String("forward", "127.0.0.1:3000", "where to forward")
+	peer    = flag.String("peer", "127.0.0.1:11111", "peering targer")
+	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
 )
 
 func main() {
@@ -35,6 +38,15 @@ func main() {
 	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	u, err := url.Parse(*forward)
+	if err != nil {
+		logger.Fatal("parsing forwarding target", zap.Error(err))
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		logger.Fatal("only http/https schema is supported", zap.String("schema", u.Scheme))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,23 +120,20 @@ func main() {
 		logger.Info("peer disconnected, exiting")
 		sigs <- syscall.SIGTERM
 	}()
+
+	// In theory, we could support TCP forwarding. However, since we are doing TLS termination
+	// on the Gateway, whatever TCP negotiation protocol will get yeeted by the TLS handshake.
+	proxy := httputil.NewSingleHostReverseProxy(u)
+	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, e error) {
+		logger.Error("forward http/https request", zap.Error(e))
+		rw.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(rw, "Destination returned error: %s", e.Error())
+	}
 	go func() {
-		for c := range p.Handle(ctx) {
-			o, err := net.Dial("tcp", *forward)
-			if err != nil {
-				logger.Info("forwarding connection", zap.Error(err), zap.Stringp("destination", forward))
-				continue
-			}
-			errCh := multiplexer.Connect(ctx, c.Conn, o)
-			go func() {
-				for e := range errCh {
-					if multiplexer.IsTimeout(e) {
-						continue
-					}
-					logger.Error("unexpected error in bidirectional stream", zap.Error(e))
-				}
-			}()
+		accepter := &MultiplexerAccepter{
+			Peer: p,
 		}
+		http.Serve(accepter, proxy)
 	}()
 
 	<-sigs
