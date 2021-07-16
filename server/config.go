@@ -22,14 +22,14 @@ type GossipConfig struct {
 }
 
 type Config struct {
-	Context         context.Context
-	Logger          *zap.Logger
-	PeerListener    net.Listener
-	PeerTLSConfig   *tls.Config
-	ClientListener  net.Listener
-	ClientTLSConfig *tls.Config
-	Multiplexer     MultiplexerConfig
-	Gossip          GossipConfig
+	Context        context.Context
+	Logger         *zap.Logger
+	PeerListener   net.Listener
+	PeerTLSConfig  *tls.Config
+	ClientListener net.Listener
+	Multiplexer    MultiplexerConfig
+	Gossip         GossipConfig
+	Domain         string
 }
 
 func (c *Config) validate() error {
@@ -42,8 +42,14 @@ func (c *Config) validate() error {
 	if c.PeerListener == nil {
 		return errors.New("nil peer listener is invalid")
 	}
+	if c.PeerTLSConfig == nil {
+		return errors.New("nil peer tls config is invalid")
+	}
 	if c.ClientListener == nil {
 		return errors.New("nil client listener is invalid")
+	}
+	if c.Domain == "" {
+		return errors.New("empty domain is invalid")
 	}
 	return nil
 }

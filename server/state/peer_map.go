@@ -14,6 +14,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	ErrSessionAlreadyEstablished = fmt.Errorf("already have a session with this peer")
+)
+
 // PeerMap maintains the mapping between a Peer and their corresponding
 // *multiplexer.Peer connection. Since the Peers are discovered via gossip
 // and two peers in the same multiplex.Pair can attempt to handshake at the same time,
@@ -53,7 +57,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 	defer unlock()
 
 	if _, ok := s.peers.Load(conf.Peer); ok {
-		return errors.New("already have session with this peer")
+		return ErrSessionAlreadyEstablished
 	}
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
@@ -71,15 +75,13 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 		return errors.Wrap(err, "cannot ping peer")
 	}
 
-	s.logger.Info("RTT with Peer", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d))
+	s.logger.Debug("RTT with Peer", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d))
 
 	select {
 	case <-p.NotifyClose():
 		return errors.New("peer closed after negotiation")
 	case <-time.After(conf.Wait):
 	}
-
-	s.logger.Info("peer registered", zap.Bool("initiator", conf.Initiator), zap.Uint64("peerID", conf.Peer))
 
 	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)
@@ -141,11 +143,12 @@ func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
 
 func (s *PeerMap) Remove(peer uint64) error {
 	unlock := s.peersMutex.Lock(peer)
-	p, ok := s.peers.LoadAndDelete(peer)
+	pp, ok := s.peers.LoadAndDelete(peer)
 	atomic.AddUint64(s.num, ^uint64(0))
 	unlock()
 	if !ok {
 		return nil
 	}
-	return p.(*multiplexer.Peer).Bye()
+	p := pp.(*multiplexer.Peer)
+	return p.Bye()
 }

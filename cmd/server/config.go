@@ -7,6 +7,10 @@ import (
 	"github.com/zllovesuki/t/server"
 )
 
+type WebConfig struct {
+	Domain string
+}
+
 type TLSConfig struct {
 	Peer struct {
 		CA   string
@@ -21,6 +25,7 @@ type TLSConfig struct {
 
 type ConfigBundle struct {
 	TLS         *TLSConfig
+	Web         *WebConfig
 	Multiplexer *server.MultiplexerConfig
 	Gossip      *server.GossipConfig
 }
@@ -35,6 +40,7 @@ func getConfig(path string) (*ConfigBundle, error) {
 	}
 
 	var bundle ConfigBundle
+	cfg.MapStruct("web", &bundle.Web)
 	cfg.MapStruct("multiplexer", &bundle.Multiplexer)
 	cfg.MapStruct("tls", &bundle.TLS)
 	cfg.MapStruct("gossip", &bundle.Gossip)

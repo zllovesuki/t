@@ -115,12 +115,12 @@ func New(conf Config) (*Server, error) {
 }
 
 func (s *Server) ListenForPeers() {
-	go func() {
-		for {
-			<-time.After(time.Second * 15)
-			fmt.Printf("%+v\n", s.peerGraph)
-		}
-	}()
+	// go func() {
+	// 	for {
+	// 		<-time.After(time.Second * 15)
+	// 		fmt.Printf("%+v\n", s.peerGraph)
+	// 	}
+	// }()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
@@ -156,121 +156,6 @@ func (s *Server) PeerID() uint64 {
 func (s *Server) Meta() []byte {
 	m := s.meta
 	return m.Pack()
-}
-
-func (s *Server) clientHandshake(conn net.Conn) {
-	var err error
-	logger := s.logger
-	defer func() {
-		if err == nil {
-			return
-		}
-		logger.Error("error during client handshake", zap.Error(err))
-		conn.Close()
-	}()
-
-	var pair multiplexer.Pair
-	var read int
-	r := make([]byte, multiplexer.PairSize)
-
-	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
-	read, err = conn.Read(r)
-	if err != nil {
-		err = errors.Wrap(err, "reading handshake")
-		return
-	}
-	if read != multiplexer.PairSize {
-		err = errors.Errorf("invalid handshake length received from client: %d", read)
-		return
-	}
-	pair.Unpack(r)
-
-	logger = logger.With(zap.Uint64("peerID", pair.Source))
-
-	logger.Debug("incoming handshake with client", zap.Any("peer", pair))
-
-	if pair.Source == 0 ||
-		pair.Source == pair.Destination ||
-		pair.Destination != 0 ||
-		pair.Source == s.PeerID() {
-		err = errors.Errorf("invalid client handshake %+v", pair)
-		return
-	}
-
-	pair.Destination = s.PeerID()
-	w := pair.Pack()
-	_, err = conn.Write(w)
-	if err != nil {
-		err = errors.Wrap(err, "replying handshake")
-		return
-	}
-
-	conn.SetReadDeadline(time.Time{})
-	conn.SetWriteDeadline(time.Time{})
-
-	err = s.clients.NewPeer(s.parentCtx, state.PeerConfig{
-		Conn:      conn,
-		Peer:      pair.Source,
-		Initiator: false,
-		Wait:      time.Second,
-	})
-	if err != nil {
-		err = errors.Wrap(err, "setting up client")
-	}
-}
-
-func (s *Server) peerHandshake(conn net.Conn) {
-	var err error
-	logger := s.logger
-	defer func() {
-		if err == nil {
-			return
-		}
-		logger.Error("error during peer handshake", zap.Error(err))
-		conn.Close()
-	}()
-
-	var pair multiplexer.Pair
-	var read int
-	r := make([]byte, multiplexer.PairSize)
-
-	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
-	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
-	read, err = conn.Read(r)
-	if err != nil {
-		err = errors.Wrap(err, "reading handshake")
-		return
-	}
-	if read != multiplexer.PairSize {
-		err = errors.Errorf("invalid handshake length received from peer: %d", read)
-	}
-	pair.Unpack(r)
-
-	logger = logger.With(zap.Uint64("peerID", pair.Source))
-
-	logger.Debug("incoming handshake with peer", zap.Any("peer", pair))
-
-	if (pair.Source == 0 || pair.Destination == 0) ||
-		(pair.Source == pair.Destination) ||
-		(pair.Destination != s.PeerID()) ||
-		pair.Source == s.PeerID() {
-		err = errors.Errorf("invalid peer handshake %+v", pair)
-		return
-	}
-
-	conn.SetReadDeadline(time.Time{})
-	conn.SetWriteDeadline(time.Time{})
-
-	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
-		Conn:      conn,
-		Peer:      pair.Source,
-		Initiator: false,
-		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
-	})
-	if err != nil {
-		err = errors.Wrap(err, "setting up peer")
-	}
 }
 
 func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
