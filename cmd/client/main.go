@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/shared"
+	"go.uber.org/zap"
 
 	"github.com/sethvargo/go-diceware/diceware"
 )
@@ -38,12 +40,17 @@ func getRandomName() string {
 func main() {
 	flag.Parse()
 
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	connector, err := net.Dial("tcp", *peer)
 	if err != nil {
-		fmt.Printf("error listening: %+v\n", err)
+		logger.Error("connecting to peer", zap.Error(err))
 		return
 	}
 
@@ -60,24 +67,27 @@ func main() {
 	pair.Unpack(buf)
 
 	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
+		Logger:    logger.With(zap.Uint64("PeerID", pair.Destination), zap.Bool("Initiator", true)),
 		Conn:      connector,
 		Initiator: true,
 		Peer:      pair.Destination,
 	})
 	if err != nil {
-		fmt.Printf("error setting up peer: %+v\n", err)
+		logger.Error("handshaking with peer", zap.Error(err))
 		return
 	}
 
 	rtt, err := p.Ping()
 	if err != nil {
-		fmt.Printf("error checking connection: %+v\n", err)
+		logger.Error("checking for peer rtt", zap.Error(err))
 		return
 	}
 
-	fmt.Printf("peering: %+v\n", pair)
-	fmt.Printf("rtt time with server %s\n", rtt)
-	fmt.Printf("your hostname: %+v\n", name)
+	logger.Info("Peering established", zap.Any("pair", pair), zap.Duration("rtt", rtt))
+
+	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
+	fmt.Printf("Your Hostname: %+v\n", name)
+	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -85,23 +95,23 @@ func main() {
 	go p.Start(ctx)
 	go func() {
 		<-p.NotifyClose()
-		fmt.Printf("peer %d disconnected\n", p.Peer())
+		logger.Info("peer disconnected, exiting")
 		sigs <- syscall.SIGTERM
 	}()
 	go func() {
 		for c := range p.Handle(ctx) {
 			o, err := net.Dial("tcp", *forward)
 			if err != nil {
-				fmt.Printf("error connecting to %s: %+v\n", *forward, err)
+				logger.Info("forwarding connection", zap.Error(err), zap.Stringp("destination", forward))
 				continue
 			}
-			errCh := multiplexer.Connect(ctx, o, c.Conn)
+			errCh := multiplexer.Connect(ctx, c.Conn, o)
 			go func() {
 				for e := range errCh {
 					if multiplexer.IsTimeout(e) {
 						continue
 					}
-					fmt.Printf("%+v\n", e)
+					logger.Error("unexpected error in bidirectional stream", zap.Error(e))
 				}
 			}()
 		}
@@ -110,6 +120,6 @@ func main() {
 	<-sigs
 
 	if err := p.Bye(); err != nil {
-		fmt.Printf("cannot say Bye: %+v\n", err)
+		logger.Error("cannot close connection with peer", zap.Error(err))
 	}
 }
