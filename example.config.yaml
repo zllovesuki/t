@@ -1,0 +1,38 @@
+web:
+  # this is the domain part of the web gateway. The generated tunnel name will be
+  # something like: dramatize-detergent-donator-mutable-election.example.com
+  domain: example.com
+
+multiplexer:
+  # this should be publicly accessible for other peers and clients
+  addr: 127.0.0.1
+  # if left to 0, a random port will be used. Peers will be discovered via Gossip
+  peer: 0
+  # which port to listen for client's multiplexer connection
+  client: 9000
+
+tls:
+  # peer certificates should be self-signed with "server auth" and "client auth"
+  # additionally, one of the SANs must be "t_Peer" (case sensitive)
+  peer:
+    ca: tls/ca.pem
+    cert: tls/peer.pem
+    key: tls/peer-key.pem
+  # this should be signed by a public CA, e.g. Let's Encrypt, as the multiplexer
+  # and the web gateway uses this cert
+  client:
+    cert: tls/dev.pem
+    key: tls/dev-key.pem
+
+gossip:
+  port: 12345
+  keyring:
+    # can be generated with: openssl rand -base64 32
+    # must have at least one keyring to encrypt gossip traffic
+    - MxXOrj7VlgqtPEp5SLYXmr6PzZ9CCQEp3bQhvnLBBA0=
+    - ByZZSrG7ejvp271SRG3JfP1peK/9c+iuRMio+Ow0y8c=
+  # specify one of the peers is enough as they will discover each other via gossip
+  members: 
+    - 127.0.0.1:12345
+    - 127.0.0.1:12346
+    - 127.0.0.1:12347
