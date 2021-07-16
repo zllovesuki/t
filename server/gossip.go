@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"crypto/tls"
 	"math/rand"
-	"net"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -14,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Server) Gossip(ctx context.Context) error {
+func (s *Server) Gossip() error {
 	m, err := memberlist.Create(s.gossipCfg)
 	if err != nil {
 		return err
@@ -31,7 +30,7 @@ func (s *Server) Gossip(ctx context.Context) error {
 	}
 
 	go func() {
-		<-ctx.Done()
+		<-s.parentCtx.Done()
 		s.logger.Info("shutdowning gossip")
 		s.gossip.Leave(time.Second * 5)
 		s.gossip.Shutdown()
@@ -45,8 +44,8 @@ func (s *Server) Gossip(ctx context.Context) error {
 var _ memberlist.EventDelegate = &Server{}
 
 func (s *Server) NotifyJoin(node *memberlist.Node) {
-	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Debug("gossip ourself, refusing")
+	if node.Name == s.gossipCfg.Name {
+		s.logger.Debug("gossiping ourself, refusing")
 		return
 	}
 	if node.Meta == nil {
@@ -67,14 +66,13 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 }
 
 func (s *Server) NotifyLeave(node *memberlist.Node) {
-	if node.Name == fmt.Sprint(s.PeerID()) {
-		s.logger.Debug("gossip ourself, refusing")
+	if node.Name == s.gossipCfg.Name {
+		s.logger.Debug("gossiping ourself, refusing")
 		return
 	}
 
 	var m Meta
 	if err := m.Unpack(node.Meta); err != nil {
-		// fmt.Printf("error unpacking node meta: %+v\n", err)
 		return
 	}
 
@@ -141,10 +139,10 @@ func (s *Server) checkRetry(ctx context.Context, m Meta) {
 
 func (s *Server) connectPeer(ctx context.Context, m Meta) {
 	var err error
-	var conn net.Conn
+	var conn *tls.Conn
 	logger := s.logger.With(zap.Any("meta", m))
 
-	conn, err = net.Dial("tcp", m.Multiplexer)
+	conn, err = tls.Dial("tcp", m.Multiplexer, s.config.PeerTLSConfig)
 	if err != nil {
 		logger.Error("opening tcp connection", zap.Error(err))
 		return

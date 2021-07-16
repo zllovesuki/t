@@ -16,8 +16,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server) {
-	cert, err := tls.LoadX509KeyPair("tls/dev.pem", "tls/dev-key.pem")
+func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server, bundle *ConfigBundle) {
+	cert, err := tls.LoadX509KeyPair(bundle.TLS.Client.Cert, bundle.TLS.Client.Key)
 	if err != nil {
 		panic(err)
 	}
@@ -29,7 +29,7 @@ func Gateway(ctx context.Context, logger *zap.Logger, s *server.Server) {
 		PreferServerCipherSuites: true,
 	}
 
-	xd, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", *ip, *webPort), &config)
+	xd, err := tls.Listen("tcp", fmt.Sprintf("%s:%d", bundle.Multiplexer.Addr, *webPort), &config)
 	if err != nil {
 		panic(err)
 	}

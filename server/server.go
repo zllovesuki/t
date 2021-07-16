@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"math/rand"
@@ -14,10 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/pkg/errors"
-)
-
-var (
-	ErrEndpointNotFound = fmt.Errorf("not peer is registered with this endpoint")
 )
 
 type Server struct {
@@ -37,22 +34,23 @@ type Server struct {
 	updatesCh      chan *state.ConnectedClients
 }
 
-type Config struct {
-	Logger         *zap.Logger
-	PeerListener   net.Listener
-	ClientListener net.Listener
-	Gossip         struct {
-		IP      string
-		Port    int
-		Members []string
-	}
-}
-
 func New(conf Config) (*Server, error) {
+
+	if err := conf.validate(); err != nil {
+		return nil, err
+	}
+
 	rand.Seed(time.Now().UnixNano())
+	peerPort := conf.Multiplexer.Peer
+	if peerPort == 0 {
+		addr, ok := conf.PeerListener.Addr().(*net.TCPAddr)
+		if !ok {
+			return nil, errors.New("peerListener is not TLS/TCp")
+		}
+		peerPort = addr.Port
+	}
 
 	self := rand.Uint64()
-	addr := conf.PeerListener.Addr().(*net.TCPAddr)
 
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
@@ -61,8 +59,9 @@ func New(conf Config) (*Server, error) {
 	s := &Server{
 		meta: Meta{
 			PeerID:      self,
-			Multiplexer: fmt.Sprintf("%s:%d", addr.IP, addr.Port),
+			Multiplexer: fmt.Sprintf("%s:%d", conf.Multiplexer.Addr, peerPort),
 		},
+		parentCtx:      conf.Context,
 		config:         conf,
 		peers:          pMap,
 		clients:        cMap,
@@ -81,15 +80,33 @@ func New(conf Config) (*Server, error) {
 		},
 	}
 
+	keys := [][]byte{}
+	for _, d := range conf.Gossip.Keyring {
+		b, err := base64.StdEncoding.DecodeString(d)
+		if err != nil {
+			return nil, errors.Wrap(err, "decoding base64 keyring")
+		}
+		keys = append(keys, b)
+	}
+
+	keyring, err := memberlist.NewKeyring(keys, keys[0])
+	if err != nil {
+		return nil, errors.Wrap(err, "creating gossip keyring")
+	}
+
 	c := memberlist.DefaultWANConfig()
-	c.AdvertiseAddr = conf.Gossip.IP
+	c.AdvertiseAddr = conf.Multiplexer.Addr
 	c.AdvertisePort = conf.Gossip.Port
-	c.BindAddr = conf.Gossip.IP
+	c.BindAddr = conf.Multiplexer.Addr
 	c.BindPort = conf.Gossip.Port
+	c.Keyring = keyring
+	c.EnableCompression = true
+	c.GossipVerifyIncoming = true
+	c.GossipVerifyOutgoing = true
 	c.PushPullInterval = time.Second * 30 // faster convergence
 	c.Events = s
 	c.Delegate = s
-	c.Name = fmt.Sprint(self)
+	c.Name = fmt.Sprintf("%s:%d/%d", conf.Multiplexer.Addr, peerPort, self)
 	c.LogOutput = io.Discard
 
 	s.gossipCfg = c
@@ -97,8 +114,7 @@ func New(conf Config) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Start(ctx context.Context) {
-	s.parentCtx = ctx
+func (s *Server) ListenForPeers() {
 	go func() {
 		for {
 			<-time.After(time.Second * 15)
@@ -112,9 +128,14 @@ func (s *Server) Start(ctx context.Context) {
 				s.logger.Error("accepting TCP connection from peers", zap.Error(err))
 				return
 			}
-			go s.peerHandshake(ctx, conn)
+			go s.peerHandshake(conn)
 		}
 	}()
+	go s.handlePeerEvents()
+	go s.handleMerge()
+}
+
+func (s *Server) ListenForClients() {
 	go func() {
 		for {
 			conn, err := s.clientListener.Accept()
@@ -122,12 +143,10 @@ func (s *Server) Start(ctx context.Context) {
 				s.logger.Error("accepting TCP connection from clients", zap.Error(err))
 				return
 			}
-			go s.clientHandshake(ctx, conn)
+			go s.clientHandshake(conn)
 		}
 	}()
-	go s.handleClientEvents(ctx)
-	go s.handlePeerEvents(ctx)
-	go s.handleMerge(ctx)
+	go s.handleClientEvents()
 }
 
 func (s *Server) PeerID() uint64 {
@@ -139,7 +158,7 @@ func (s *Server) Meta() []byte {
 	return m.Pack()
 }
 
-func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
+func (s *Server) clientHandshake(conn net.Conn) {
 	var err error
 	logger := s.logger
 	defer func() {
@@ -190,7 +209,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.clients.NewPeer(ctx, state.PeerConfig{
+	err = s.clients.NewPeer(s.parentCtx, state.PeerConfig{
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,
@@ -201,7 +220,7 @@ func (s *Server) clientHandshake(ctx context.Context, conn net.Conn) {
 	}
 }
 
-func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
+func (s *Server) peerHandshake(conn net.Conn) {
 	var err error
 	logger := s.logger
 	defer func() {
@@ -243,7 +262,7 @@ func (s *Server) peerHandshake(ctx context.Context, conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.peers.NewPeer(ctx, state.PeerConfig{
+	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -10,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Server) handlePeerEvents(ctx context.Context) {
+func (s *Server) handlePeerEvents() {
 	for peer := range s.peers.Notify() {
 		// update our peer graph in a different goroutine with closure
 		// as this may block
@@ -19,19 +18,19 @@ func (s *Server) handlePeerEvents(ctx context.Context) {
 		}(peer)
 		// listen for request for forwarding from peers
 		go func(p *multiplexer.Peer) {
-			for c := range p.Handle(ctx) {
-				if _, err := s.Forward(ctx, c.Conn, c.Pair); err != nil {
+			for c := range p.Handle(s.parentCtx) {
+				if _, err := s.Forward(s.parentCtx, c.Conn, c.Pair); err != nil {
 					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("pair", c.Pair))
 				}
 			}
 			s.logger.Debug("exiting peer streams handler", zap.Uint64("peerID", p.Peer()))
 		}(peer)
 		// handle forward request from peers
-		go peer.Start(ctx)
+		go peer.Start(s.parentCtx)
 	}
 }
 
-func (s *Server) handleClientEvents(ctx context.Context) {
+func (s *Server) handleClientEvents() {
 	for peer := range s.clients.Notify() {
 		// update our peer graph with the client as this may block with
 		// many clients connecting
@@ -51,7 +50,7 @@ func (s *Server) handleClientEvents(ctx context.Context) {
 	}
 }
 
-func (s *Server) handleMerge(ctx context.Context) {
+func (s *Server) handleMerge() {
 	for x := range s.updatesCh {
 		// because of the properties of our design:
 		// 1. client PeerIDs are unique across sessions

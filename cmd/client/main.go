@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -48,7 +49,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector, err := net.Dial("tcp", *peer)
+	connector, err := tls.Dial("tcp", *peer, &tls.Config{
+		InsecureSkipVerify: true,
+	})
 	if err != nil {
 		logger.Error("connecting to peer", zap.Error(err))
 		return

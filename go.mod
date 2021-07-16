@@ -3,6 +3,7 @@ module github.com/zllovesuki/t
 go 1.16
 
 require (
+	github.com/gookit/config/v2 v2.0.24 // indirect
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
 	github.com/hashicorp/memberlist v0.2.4

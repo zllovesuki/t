@@ -9,6 +9,7 @@ import (
 // entire map. Note: this is best to be used with sync.Map, and the size
 // is best to be a prime number to reduce collisions.
 type RingMutex struct {
+	_     sync.Mutex // so go vet will complain if we got copied
 	locks []sync.RWMutex
 	size  uint64
 }
