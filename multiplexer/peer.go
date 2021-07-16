@@ -69,12 +69,30 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 
 func (p *Peer) Start(ctx context.Context) {
 	for {
-		conn, err := p.session.AcceptStream()
-		if err != nil {
-			p.logger.Error("accepting stream from peers", zap.Error(err))
+		select {
+		case <-ctx.Done():
 			return
+		default:
+			conn, err := p.session.AcceptStream()
+			if err != nil {
+				p.logger.Error("accepting stream from peers", zap.Error(err))
+				return
+			}
+			go p.streamHandshake(ctx, conn)
 		}
-		go p.streamHandshake(ctx, conn)
+	}
+}
+
+// Null will terminate the session as soon a new stream request is received. This is primarily
+// used to disconnect badly behaving clients.
+func (p *Peer) Null(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		p.session.AcceptStream()
+		p.logger.Warn("nulled Peer attempted to request a new stream")
+		p.Bye()
 	}
 }
 

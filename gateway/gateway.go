@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server"
@@ -47,10 +48,16 @@ func (g *Gateway) Start(ctx context.Context) {
 func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	defer conn.CloseWrite()
 
-	err := conn.Handshake()
-	if err != nil {
-		g.Logger.Error("handshake failed", zap.Error(err))
+	select {
+	case <-time.After(time.Second * 5):
+		g.Logger.Info("tls handshake timeout", zap.Any("remoteAddr", conn.RemoteAddr()))
 		return
+	default:
+		err := conn.Handshake()
+		if err != nil {
+			g.Logger.Error("tls handshake failed", zap.Error(err))
+			return
+		}
 	}
 
 	xd := strings.Split(conn.ConnectionState().ServerName, ".")
@@ -70,7 +77,7 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	}
 	if err != nil {
 		logger.Error("connecting", zap.Error(err))
-		WriteResponse(conn, http.StatusBadGateway, "An unexpected error has occurred while attempt to forward.")
+		WriteResponse(conn, http.StatusBadGateway, "An unexpected error has occurred while attempting to forward.")
 		return
 	}
 	sent := false

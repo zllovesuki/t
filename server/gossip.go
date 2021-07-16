@@ -32,7 +32,7 @@ func (s *Server) Gossip() error {
 
 	go func() {
 		<-s.parentCtx.Done()
-		s.logger.Info("shutdowning gossip")
+		s.logger.Info("shutting down gossip")
 		s.gossip.Leave(time.Second * 5)
 		s.gossip.Shutdown()
 	}()

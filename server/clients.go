@@ -103,6 +103,6 @@ func (s *Server) handleClientEvents() {
 			s.peerGraph.RemovePeer(p.Peer())
 		}(peer)
 		// do not handle forward request from client
-		// go p.Start(ctx)
+		go peer.Null(s.parentCtx)
 	}
 }
