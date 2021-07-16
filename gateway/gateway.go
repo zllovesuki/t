@@ -76,20 +76,20 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 		return
 	}
 	if err != nil {
-		logger.Error("connecting", zap.Error(err))
+		logger.Error("connecting to peer", zap.Error(err))
 		WriteResponse(conn, http.StatusBadGateway, "An unexpected error has occurred while attempting to forward.")
 		return
 	}
-	sent := false
 	for {
 		select {
 		case <-c.Done():
 			return
 		case err, ok := <-errCh:
-			if !sent && multiplexer.IsTimeout(err) {
-				sent = true
-				WriteResponse(conn, http.StatusGatewayTimeout, "Destination is taking too long to respond.")
-				return
+			if multiplexer.IsTimeout(err) {
+				continue
+			}
+			if err != nil {
+				logger.Error("forwarding connection", zap.Error(err))
 			}
 			if !ok {
 				return

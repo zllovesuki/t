@@ -11,10 +11,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
-	"github.com/pkg/errors"
 	"github.com/zllovesuki/t/gateway"
 	"github.com/zllovesuki/t/server"
 
@@ -97,19 +95,7 @@ func main() {
 		ClientAuth:               tls.RequireAndVerifyClientCert,
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
-		VerifyConnection: func(cs tls.ConnectionState) error {
-			if len(cs.PeerCertificates) != 1 {
-				return errors.New("exactly one peer certificate is required")
-			}
-			found := false
-			for _, name := range cs.PeerCertificates[0].DNSNames {
-				found = found || name == "t_Peer"
-			}
-			if !found {
-				return errors.New("t_Peer must be present in SANs")
-			}
-			return nil
-		},
+		VerifyConnection:         checkPeerSAN("t_Peer"),
 	}
 
 	clientTLSConfig := &tls.Config{
@@ -118,6 +104,7 @@ func main() {
 		ClientAuth:               tls.NoClientCert,
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
+		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
 	}
 
 	gatwayTLSConfig := &tls.Config{
@@ -127,12 +114,7 @@ func main() {
 		NextProtos:               []string{"http/1.1"},
 		MinVersion:               tls.VersionTLS11,
 		PreferServerCipherSuites: true,
-		VerifyConnection: func(cs tls.ConnectionState) error {
-			if !strings.HasSuffix(cs.ServerName, bundle.Web.Domain) {
-				return errors.Errorf("unauthroized domain name: %s", cs.ServerName)
-			}
-			return nil
-		},
+		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
 	}
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Multiplexer.Addr, bundle.Multiplexer.Peer)

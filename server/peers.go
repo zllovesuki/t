@@ -79,7 +79,7 @@ func (s *Server) handlePeerEvents() {
 		}(peer)
 		// listen for request for forwarding from peers
 		go func(p *multiplexer.Peer) {
-			for c := range p.Handle(s.parentCtx) {
+			for c := range p.Handle() {
 				if _, err := s.Forward(s.parentCtx, c.Conn, c.Pair); err != nil {
 					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("pair", c.Pair))
 				}

@@ -47,7 +47,6 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
-	// asymmetric timeout so upstream can get a timeout before downstream closes
 	tDst := &IdleTimeoutConn{
 		Conn:    dst,
 		Timeout: time.Second * 15,

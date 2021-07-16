@@ -3,6 +3,7 @@ package multiplexer
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -20,6 +21,7 @@ type Peer struct {
 	session  *yamux.Session
 	config   PeerConfig
 	incoming chan StreamPair
+	closed   *int32
 }
 
 type PeerConfig struct {
@@ -50,10 +52,8 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 	var err error
 	if config.Initiator {
 		session, err = yamux.Client(config.Conn, nil)
-		// fmt.Printf("acting as client\n")
 	} else {
 		session, err = yamux.Server(config.Conn, nil)
-		// fmt.Printf("acting as server\n")
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
@@ -64,6 +64,7 @@ func NewPeer(config PeerConfig) (*Peer, error) {
 		session:  session,
 		config:   config,
 		incoming: make(chan StreamPair, 32),
+		closed:   new(int32),
 	}, nil
 }
 
@@ -90,7 +91,10 @@ func (p *Peer) Null(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	default:
-		p.session.AcceptStream()
+		_, err := p.session.AcceptStream()
+		if err != nil {
+			return
+		}
 		p.logger.Warn("nulled Peer attempted to request a new stream")
 		p.Bye()
 	}
@@ -149,7 +153,7 @@ func (p *Peer) Bidirectional(ctx context.Context, conn net.Conn, pair Pair) (<-c
 	return errCh, nil
 }
 
-func (p *Peer) Handle(ctx context.Context) <-chan StreamPair {
+func (p *Peer) Handle() <-chan StreamPair {
 	return p.incoming
 }
 
@@ -158,7 +162,10 @@ func (p *Peer) NotifyClose() <-chan struct{} {
 }
 
 func (p *Peer) Bye() error {
-	defer p.config.Conn.Close()
-	close(p.incoming)
-	return p.session.Close()
+	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
+		close(p.incoming)
+		p.session.Close()
+		p.config.Conn.Close()
+	}
+	return nil
 }
