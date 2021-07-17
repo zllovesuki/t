@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var MessagingPair = Pair{}
+
 type StreamPair struct {
 	Conn net.Conn
 	Pair Pair
@@ -131,6 +133,23 @@ func (p *Peer) Peer() uint64 {
 
 func (p *Peer) Ping() (time.Duration, error) {
 	return p.session.Ping()
+}
+
+func (p *Peer) Messaging() (net.Conn, error) {
+	n, err := p.session.Open()
+	if err != nil {
+		return nil, errors.Wrap(err, "opening new messaging stream")
+	}
+	pair := MessagingPair
+	buf := pair.Pack()
+	written, err := n.Write(buf)
+	if err != nil {
+		return nil, errors.Wrap(err, "writing messaging stream handshake")
+	}
+	if written != PairSize {
+		return nil, errors.Errorf("invalid messaging handshake length: %d", written)
+	}
+	return n, nil
 }
 
 func (p *Peer) Bidirectional(ctx context.Context, conn net.Conn, pair Pair) (<-chan error, error) {

@@ -1,12 +1,11 @@
 package server
 
 import (
-	"context"
 	"crypto/tls"
-	"math/rand"
+	"fmt"
+	"net"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server/state"
 
@@ -46,7 +45,7 @@ var _ memberlist.EventDelegate = &Server{}
 
 func (s *Server) NotifyJoin(node *memberlist.Node) {
 	if node.Name == s.gossipCfg.Name {
-		s.logger.Debug("gossiping ourself, refusing")
+		s.logger.Debug("gossip: ignore new node join on ourself")
 		return
 	}
 	if node.Meta == nil {
@@ -58,17 +57,32 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 		return
 	}
 
-	s.logger.Info("new peer discovered via gossip", zap.Any("meta", m))
+	if m.PeerID == s.PeerID() {
+		s.logger.Fatal("gossip: new peer has the same ID as current node", zap.Any("meta", m), zap.Uint64("self", s.PeerID()))
+	}
 
-	if s.peers.Has(m.PeerID) {
+	s.logger.Info("gossip: new peer discovered via gossip", zap.Any("meta", m))
+
+	if m.PeerID < s.PeerID() {
+		s.logger.Info("gossip: new peer has a lower PeerID, acting as responder")
+		go func(m Meta) {
+			time.Sleep(time.Second * 10)
+
+			if s.peers.Get(m.PeerID) != nil {
+				return
+			}
+			s.logger.Warn("gossip: new peer not connected after 10 seconds, attempt to reach out", zap.Any("meta", m))
+			go s.connectPeer(m)
+		}(m)
 		return
 	}
-	go s.connectPeer(s.parentCtx, m)
+
+	go s.connectPeer(m)
 }
 
 func (s *Server) NotifyLeave(node *memberlist.Node) {
 	if node.Name == s.gossipCfg.Name {
-		s.logger.Debug("gossiping ourself, refusing")
+		s.logger.Debug("gossip: ignore node leave on ourself")
 		return
 	}
 
@@ -78,8 +92,6 @@ func (s *Server) NotifyLeave(node *memberlist.Node) {
 	}
 
 	s.logger.Info("dead peer discovered via gossip", zap.Any("meta", m))
-
-	go s.removePeer(s.parentCtx, m)
 }
 
 func (s *Server) NotifyUpdate(node *memberlist.Node) {
@@ -122,30 +134,16 @@ func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
 
 // ======== Gossip Helpers ========
 
-func (s *Server) checkRetry(ctx context.Context, m Meta) {
-	if !s.peers.Has(m.PeerID) {
-		if m.retry > 5 {
-			s.logger.Error("handshake retry attempts exhausted", zap.Any("meta", m))
-			return
-		}
-		time.Sleep(time.Second * time.Duration(rand.Intn(5)+1))
-		m.retry++
-		if s.peers.Has(m.PeerID) {
-			return
-		}
-		s.logger.Warn("peer handshake deadlock detected, retrying", zap.Any("meta", m))
-		go s.connectPeer(ctx, m)
-	}
-}
-
-func (s *Server) connectPeer(ctx context.Context, m Meta) {
+func (s *Server) connectPeer(m Meta) {
 	var err error
 	var conn *tls.Conn
 	logger := s.logger.With(zap.Any("meta", m))
 
-	conn, err = tls.Dial("tcp", m.Multiplexer, s.config.PeerTLSConfig)
+	conn, err = tls.DialWithDialer(&net.Dialer{
+		Timeout: time.Second * 3,
+	}, "tcp", fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort), s.config.PeerTLSConfig)
 	if err != nil {
-		logger.Error("opening tcp connection", zap.Error(err))
+		logger.Error("opening tls connection", zap.Error(err))
 		return
 	}
 
@@ -153,13 +151,8 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 		if err == nil {
 			return
 		}
-		if errors.Is(err, state.ErrSessionAlreadyEstablished) {
-			logger.Info("reusing established session")
-			return
-		}
 		logger.Error("connecting to peer", zap.Error(err))
 		conn.Close()
-		s.checkRetry(ctx, m)
 	}()
 
 	logger.Debug("initiating handshake with peer")
@@ -171,23 +164,12 @@ func (s *Server) connectPeer(ctx context.Context, m Meta) {
 	buf := pair.Pack()
 	conn.Write(buf)
 
-	err = s.peers.NewPeer(ctx, state.PeerConfig{
+	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
 		Conn:      conn,
 		Peer:      m.PeerID,
 		Initiator: true,
-		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
+		Wait:      time.Second,
 	})
-}
-
-func (s *Server) removePeer(ctx context.Context, m Meta) {
-	p := s.peers.Get(m.PeerID)
-	if p == nil {
-		s.logger.Warn("removing a non-existent peer", zap.Any("meta", m))
-		return
-	}
-	s.logger.Debug("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
-	s.peers.Remove(p.Peer())
-	s.peerGraph.RemovePeer(p.Peer())
 }
 
 func (s *Server) handleMerge() {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"math/rand"
 	"net"
 	"time"
 
@@ -62,7 +61,7 @@ func (s *Server) peerHandshake(conn net.Conn) {
 		Conn:      conn,
 		Peer:      pair.Source,
 		Initiator: false,
-		Wait:      time.Second * time.Duration(rand.Intn(3)+1),
+		Wait:      time.Second,
 	})
 	if err != nil {
 		err = errors.Wrap(err, "setting up peer")
@@ -80,6 +79,10 @@ func (s *Server) handlePeerEvents() {
 		// listen for request for forwarding from peers
 		go func(p *multiplexer.Peer) {
 			for c := range p.Handle() {
+				if c.Pair == multiplexer.MessagingPair {
+					go s.openMessaging(c.Conn, p.Peer())
+					continue
+				}
 				if _, err := s.Forward(s.parentCtx, c.Conn, c.Pair); err != nil {
 					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("pair", c.Pair))
 				}
@@ -88,5 +91,35 @@ func (s *Server) handlePeerEvents() {
 		}(peer)
 		// handle forward request from peers
 		go peer.Start(s.parentCtx)
+
+		// open a messaging stream
+		// but only one side of the session can
+		go func(p *multiplexer.Peer) {
+			if p.Initiator() {
+				return
+			}
+			c, err := p.Messaging()
+			if err != nil {
+				s.logger.Error("opening outgoing messaging stream", zap.Error(err), zap.Uint64("Peer", p.Peer()))
+				return
+			}
+			s.openMessaging(c, p.Peer())
+		}(peer)
+
+		// remove peer if they disconnected before gossip found out
+		go func(p *multiplexer.Peer) {
+			<-p.NotifyClose()
+			s.logger.Debug("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
+			s.peers.Remove(p.Peer())
+			s.peerGraph.RemovePeer(p.Peer())
+			s.membershipCh <- struct{}{}
+		}(peer)
+
+		s.membershipCh <- struct{}{}
 	}
+}
+
+func (s *Server) openMessaging(c net.Conn, peer uint64) {
+	ch := s.messaging.Register(peer, c)
+	s.handlePeerMessaging(ch, peer)
 }

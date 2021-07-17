@@ -1,26 +1,38 @@
 package server
 
-import "encoding/json"
+import (
+	"encoding/binary"
+	"net"
+
+	"github.com/pkg/errors"
+)
+
+const (
+	MetaSize = 24
+)
 
 type Meta struct {
-	Multiplexer string
+	ConnectIP   string
+	ConnectPort uint64
 	PeerID      uint64
-	retry       int64
 }
 
 func (m *Meta) Pack() []byte {
-	x, err := json.Marshal(m)
-	if err != nil {
-		return nil
-	}
-	return x
+	b := make([]byte, MetaSize)
+	ip := net.ParseIP(m.ConnectIP)
+	copy(b[0:net.IPv4len], []byte(ip)[12:16])
+	binary.BigEndian.PutUint64(b[8:16], m.ConnectPort)
+	binary.BigEndian.PutUint64(b[16:24], m.PeerID)
+	return b
 }
 
 func (m *Meta) Unpack(b []byte) error {
-	var x Meta
-	if err := json.Unmarshal(b, &x); err != nil {
-		return err
+	if len(b) != MetaSize {
+		return errors.New("meta length mismatched")
 	}
-	*m = x
+	ip := net.IP(b[0:net.IPv4len])
+	m.ConnectIP = ip.To4().String()
+	m.ConnectPort = binary.BigEndian.Uint64(b[8:16])
+	m.PeerID = binary.BigEndian.Uint64(b[16:24])
 	return nil
 }

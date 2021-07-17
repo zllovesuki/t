@@ -26,22 +26,20 @@ var (
 // but only either the initiator or the responder of the same multiplexer.Pair can
 // hold a full-duplex session.
 type PeerMap struct {
-	self       uint64
-	peersMutex *RingMutex
-	peers      *sync.Map
-	logger     *zap.Logger
-	notify     chan *multiplexer.Peer
-	num        *uint64
+	self   uint64
+	peers  *sync.Map
+	logger *zap.Logger
+	notify chan *multiplexer.Peer
+	num    *uint64
 }
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		peersMutex: NewRing(73),
-		peers:      &sync.Map{},
-		notify:     make(chan *multiplexer.Peer, 16),
-		logger:     logger,
-		num:        new(uint64),
-		self:       self,
+		peers:  &sync.Map{},
+		notify: make(chan *multiplexer.Peer, 16),
+		logger: logger,
+		num:    new(uint64),
+		self:   self,
 	}
 }
 
@@ -53,9 +51,6 @@ type PeerConfig struct {
 }
 
 func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
-	unlock := s.peersMutex.Lock(conf.Peer)
-	defer unlock()
-
 	if _, ok := s.peers.Load(conf.Peer); ok {
 		return ErrSessionAlreadyEstablished
 	}
@@ -83,9 +78,9 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 	case <-time.After(conf.Wait):
 	}
 
+	s.notify <- p
 	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)
-	s.notify <- p
 
 	return nil
 }
@@ -125,16 +120,12 @@ func (s *PeerMap) Snapshot() []uint64 {
 }
 
 func (s *PeerMap) Has(peer uint64) bool {
-	rUnlock := s.peersMutex.RLock(peer)
 	_, ok := s.peers.Load(peer)
-	rUnlock()
 	return ok
 }
 
 func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
-	rUnlock := s.peersMutex.RLock(peer)
 	p, ok := s.peers.Load(peer)
-	rUnlock()
 	if ok {
 		return p.(*multiplexer.Peer)
 	}
@@ -142,10 +133,8 @@ func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
 }
 
 func (s *PeerMap) Remove(peer uint64) error {
-	unlock := s.peersMutex.Lock(peer)
-	pp, ok := s.peers.LoadAndDelete(peer)
 	atomic.AddUint64(s.num, ^uint64(0))
-	unlock()
+	pp, ok := s.peers.LoadAndDelete(peer)
 	if !ok {
 		return nil
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/zllovesuki/t/messaging"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server/state"
 	"go.uber.org/zap"
@@ -19,19 +20,22 @@ import (
 
 type Server struct {
 	parentCtx      context.Context
+	logger         *zap.Logger
 	config         Config
 	id             uint64
 	meta           Meta
 	peers          *state.PeerMap
 	clients        *state.PeerMap
 	peerGraph      *state.PeerGraph
+	messaging      *messaging.Channel
 	peerListner    net.Listener
 	clientListener net.Listener
-	logger         *zap.Logger
 	gossip         *memberlist.Memberlist
 	gossipCfg      *memberlist.Config
 	broadcasts     *memberlist.TransmitLimitedQueue
 	updatesCh      chan *state.ConnectedClients
+	currentLeader  *uint64
+	membershipCh   chan struct{}
 }
 
 func New(conf Config) (*Server, error) {
@@ -45,7 +49,7 @@ func New(conf Config) (*Server, error) {
 	if peerPort == 0 {
 		addr, ok := conf.PeerListener.Addr().(*net.TCPAddr)
 		if !ok {
-			return nil, errors.New("peerListener is not TLS/TCp")
+			return nil, errors.New("peerListener is not TLS/TCP")
 		}
 		peerPort = addr.Port
 	}
@@ -58,19 +62,23 @@ func New(conf Config) (*Server, error) {
 
 	s := &Server{
 		meta: Meta{
+			ConnectIP:   conf.Multiplexer.Addr,
+			ConnectPort: uint64(peerPort),
 			PeerID:      self,
-			Multiplexer: fmt.Sprintf("%s:%d", conf.Multiplexer.Addr, peerPort),
 		},
 		parentCtx:      conf.Context,
 		config:         conf,
+		id:             self,
 		peers:          pMap,
 		clients:        cMap,
 		peerGraph:      pg,
-		id:             self,
+		messaging:      messaging.New(conf.Logger, self),
 		peerListner:    conf.PeerListener,
 		clientListener: conf.ClientListener,
 		logger:         conf.Logger,
 		updatesCh:      make(chan *state.ConnectedClients, 16),
+		currentLeader:  new(uint64),
+		membershipCh:   make(chan struct{}, 1),
 		broadcasts: &memberlist.TransmitLimitedQueue{
 			NumNodes: func() int {
 				// include ourself
@@ -88,8 +96,11 @@ func New(conf Config) (*Server, error) {
 		}
 		keys = append(keys, b)
 	}
+	if len(keys) == 0 {
+		return nil, errors.New("no gossip keyring was found")
+	}
 
-	keyring, err := memberlist.NewKeyring(keys, keys[0])
+	keyring, err := memberlist.NewKeyring(keys, keys[rand.Intn(len(keys))])
 	if err != nil {
 		return nil, errors.Wrap(err, "creating gossip keyring")
 	}
@@ -115,12 +126,6 @@ func New(conf Config) (*Server, error) {
 }
 
 func (s *Server) ListenForPeers() {
-	// go func() {
-	// 	for {
-	// 		<-time.After(time.Second * 15)
-	// 		fmt.Printf("%+v\n", s.peerGraph)
-	// 	}
-	// }()
 	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
@@ -131,8 +136,10 @@ func (s *Server) ListenForPeers() {
 			go s.peerHandshake(conn)
 		}
 	}()
+	go s.handleMembershipChange()
 	go s.handlePeerEvents()
 	go s.handleMerge()
+	s.membershipCh <- struct{}{}
 }
 
 func (s *Server) ListenForClients() {
@@ -154,8 +161,7 @@ func (s *Server) PeerID() uint64 {
 }
 
 func (s *Server) Meta() []byte {
-	m := s.meta
-	return m.Pack()
+	return s.meta.Pack()
 }
 
 func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
