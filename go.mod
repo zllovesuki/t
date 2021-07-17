@@ -3,7 +3,7 @@ module github.com/zllovesuki/t
 go 1.16
 
 require (
-	github.com/gookit/config/v2 v2.0.24 // indirect
+	github.com/gookit/config/v2 v2.0.24
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
 	github.com/hashicorp/memberlist v0.2.4
@@ -17,5 +17,4 @@ require (
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	golang.org/x/net v0.0.0-20210614182718-04defd469f4e // indirect
 	golang.org/x/tools v0.1.4 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
