@@ -12,7 +12,6 @@ import (
 )
 
 type MultiplexerConfig struct {
-	Addr   string
 	Peer   int
 	Client int
 }
@@ -23,9 +22,15 @@ type GossipConfig struct {
 	Members []string
 }
 
+type Network struct {
+	AdvertiseAddr string
+	BindAddr      string
+}
+
 type Config struct {
 	Context        context.Context
 	Logger         *zap.Logger
+	Network        Network
 	PeerListener   net.Listener
 	PeerTLSConfig  *tls.Config
 	ClientListener net.Listener

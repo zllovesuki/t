@@ -33,10 +33,15 @@ acme:
       tsigAlgo: hmac-sha256
       nameserver: dns.example.com:53
 
-multiplexer:
+network:
   # this should be publicly accessible for other peers and clients
-  addr: 127.0.0.1
+  advertiseAddr: 127.0.0.1
+  # the address that t should bind to
+  bindAddr: 0.0.0.0
+
+multiplexer:
   # if left to 0, a random port will be used. Peers will be discovered via Gossip
+  # if you are running in docker, it's better to have a defined port so you can expose it
   peer: 0
   # which port to listen for client's multiplexer connection
   client: 9000

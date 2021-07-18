@@ -134,9 +134,9 @@ func main() {
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
 	}
 
-	peerAddr := fmt.Sprintf("%s:%d", bundle.Multiplexer.Addr, bundle.Multiplexer.Peer)
-	clientAddr := fmt.Sprintf("%s:%d", bundle.Multiplexer.Addr, bundle.Multiplexer.Client)
-	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Multiplexer.Addr, *webPort)
+	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
+	clientAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Client)
+	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *webPort)
 
 	peerListener, err := tls.Listen("tcp", peerAddr, peerTLSConfig)
 	if err != nil {
@@ -163,6 +163,7 @@ func main() {
 	s, err := server.New(server.Config{
 		Context:        ctx,
 		Logger:         logger,
+		Network:        bundle.Network,
 		PeerListener:   peerListener,
 		PeerTLSConfig:  peerTLSConfig,
 		ClientListener: clientListener,
@@ -195,7 +196,11 @@ func main() {
 
 	go g.Start(ctx)
 
-	logger.Info("peer info", zap.String("addr", peerAddr), zap.Uint64("PeerID", s.PeerID()))
+	logger.Info("peer info",
+		zap.String("bindAddr", peerAddr),
+		zap.String("advertiseAddr", fmt.Sprintf("%s:%d", bundle.Network.AdvertiseAddr, bundle.Multiplexer.Peer)),
+		zap.Uint64("PeerID", s.PeerID()),
+	)
 
 	<-sigs
 }

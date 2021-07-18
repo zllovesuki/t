@@ -23,6 +23,7 @@ type TLSConfig struct {
 }
 
 type ConfigBundle struct {
+	Network     server.Network
 	TLS         TLSConfig
 	Web         WebConfig
 	Multiplexer server.MultiplexerConfig
@@ -42,11 +43,12 @@ func getConfig(path string) (*ConfigBundle, error) {
 
 	var bundle ConfigBundle
 	cfg.MapStruct("web", &bundle.Web)
+	cfg.MapStruct("acme", &bundle.ACME)
+	cfg.MapStruct("acme.provider.rfc2136", &bundle.RFC2136)
+	cfg.MapStruct("network", &bundle.Network)
 	cfg.MapStruct("multiplexer", &bundle.Multiplexer)
 	cfg.MapStruct("tls", &bundle.TLS)
 	cfg.MapStruct("gossip", &bundle.Gossip)
-	cfg.MapStruct("acme", &bundle.ACME)
-	cfg.MapStruct("acme.provider.rfc2136", &bundle.RFC2136)
 	bundle.ACME.Domain = "*." + bundle.Web.Domain
 	bundle.ACME.RootZone = bundle.RFC2136.Zone
 

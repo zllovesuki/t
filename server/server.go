@@ -65,7 +65,7 @@ func New(conf Config) (*Server, error) {
 
 	s := &Server{
 		meta: Meta{
-			ConnectIP:   conf.Multiplexer.Addr,
+			ConnectIP:   conf.Network.AdvertiseAddr,
 			ConnectPort: uint64(peerPort),
 			PeerID:      self,
 		},
@@ -112,9 +112,9 @@ func New(conf Config) (*Server, error) {
 	}
 
 	c := memberlist.DefaultWANConfig()
-	c.AdvertiseAddr = conf.Multiplexer.Addr
+	c.AdvertiseAddr = conf.Network.AdvertiseAddr
 	c.AdvertisePort = conf.Gossip.Port
-	c.BindAddr = conf.Multiplexer.Addr
+	c.BindAddr = conf.Network.BindAddr
 	c.BindPort = conf.Gossip.Port
 	c.Keyring = keyring
 	c.EnableCompression = true
@@ -123,7 +123,7 @@ func New(conf Config) (*Server, error) {
 	c.PushPullInterval = time.Second * 30 // faster convergence
 	c.Events = s
 	c.Delegate = s
-	c.Name = fmt.Sprintf("%s:%d/%d", conf.Multiplexer.Addr, peerPort, self)
+	c.Name = fmt.Sprintf("%s:%d/%d", conf.Network.AdvertiseAddr, peerPort, self)
 	c.LogOutput = io.Discard
 
 	s.gossipCfg = c
