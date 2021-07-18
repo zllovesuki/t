@@ -35,12 +35,19 @@ var (
 	peer    = flag.String("peer", "127.0.0.1:11111", "specify the peering target")
 	where   = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
 	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
+	debug   = flag.Bool("debug", false, "verbose logging and disable TLS verification")
 )
 
 func main() {
 	flag.Parse()
 
-	logger, err := zap.NewProduction()
+	var logger *zap.Logger
+	var err error
+	if *debug {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,6 +64,11 @@ func main() {
 	peerTarget := *peer
 	if *where != defaultWhere {
 		client := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: *debug,
+				},
+			},
 			Timeout: time.Second * 5,
 		}
 		resp, err := client.Get(fmt.Sprintf("https://%s/where", *where))
@@ -77,7 +89,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector, err := tls.Dial("tcp", peerTarget, nil)
+	connector, err := tls.Dial("tcp", peerTarget, &tls.Config{
+		InsecureSkipVerify: *debug,
+	})
 	if err != nil {
 		logger.Error("connecting to peer", zap.Error(err))
 		return
