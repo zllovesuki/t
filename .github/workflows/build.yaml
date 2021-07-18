@@ -53,7 +53,7 @@ jobs:
         with:
           files: |
             bin/**
-            config.example.yaml
+            example.config.yaml
             README.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
