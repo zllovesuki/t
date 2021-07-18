@@ -21,19 +21,30 @@ type GatewayConfig struct {
 	Logger      *zap.Logger
 	Multiplexer *server.Server
 	Listener    net.Listener
+	RootDomain  string
 }
 
 type Gateway struct {
 	GatewayConfig
+	apexAcceptor *httpAccepter
+	apexServer   *apexServer
 }
 
 func New(conf GatewayConfig) *Gateway {
 	return &Gateway{
 		GatewayConfig: conf,
+		apexAcceptor: &httpAccepter{
+			parent: conf.Listener,
+			ch:     make(chan net.Conn),
+		},
+		apexServer: &apexServer{},
 	}
 }
 
 func (g *Gateway) Start(ctx context.Context) {
+
+	go http.Serve(g.apexAcceptor, g.apexServer.Handler())
+
 	for {
 		conn, err := g.Listener.Accept()
 		if err != nil {
@@ -46,7 +57,13 @@ func (g *Gateway) Start(ctx context.Context) {
 }
 
 func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
-	defer conn.CloseWrite()
+	var rerouted bool
+	defer func() {
+		if rerouted {
+			return
+		}
+		conn.CloseWrite()
+	}()
 
 	select {
 	case <-time.After(time.Second * 5):
@@ -60,7 +77,18 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 		}
 	}
 
-	xd := strings.Split(conn.ConnectionState().ServerName, ".")
+	cs := conn.ConnectionState()
+
+	switch cs.ServerName {
+	case g.RootDomain:
+		// route to main page
+		rerouted = true
+		g.apexAcceptor.ch <- conn
+		return
+	default:
+	}
+
+	xd := strings.Split(cs.ServerName, ".")
 	clientID := shared.PeerHash(xd[0])
 	logger := g.Logger.With(zap.Uint64("ClientID", clientID))
 

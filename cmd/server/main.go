@@ -83,7 +83,10 @@ func main() {
 		logger.Fatal("setting up cert manager", zap.Error(err))
 	}
 
-	certManager.LoadAccountFromFile()
+	if *disableAcme {
+		logger.Warn("ACME is disabled: no cert checking nor issuance.")
+		certManager.LoadAccountFromFile()
+	}
 	certManager.LoadBundleFromFile()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -183,6 +186,7 @@ func main() {
 		Logger:      logger,
 		Multiplexer: s,
 		Listener:    gatewayListener,
+		RootDomain:  bundle.Web.Domain,
 	})
 
 	go g.Start(ctx)

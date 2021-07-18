@@ -65,8 +65,6 @@ func (s *Server) leaderTimer() {
 					s.logger.Debug("running acme check as leader")
 					s.checkACMEAccountKeys()
 					s.checkACMECerts()
-				} else {
-					s.logger.Debug("skip acme checking with DisableACME mode")
 				}
 				if s.PeerID() == atomic.LoadUint64(s.currentLeader) {
 					s.startLeader <- struct{}{}
