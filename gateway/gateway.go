@@ -89,6 +89,7 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	err := conn.Handshake()
 	if err != nil {
 		g.Logger.Error("tls handshake failed", zap.Error(err))
+		conn.Close()
 		return
 	}
 	conn.SetDeadline(time.Time{})
