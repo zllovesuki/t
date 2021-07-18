@@ -194,6 +194,8 @@ func main() {
 	s.ListenForPeers()
 	s.ListenForClients()
 
+	go gateway.RedirectHTTP(logger, bundle.Network.BindAddr, *webPort)
+
 	go g.Start(ctx)
 
 	logger.Info("peer info",
