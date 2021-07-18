@@ -15,21 +15,17 @@ import (
 
 type IdleTimeoutConn struct {
 	net.Conn
-	Timeout time.Duration
+	ReadTimeout time.Duration
 }
+
+var _ net.Conn = &IdleTimeoutConn{}
 
 func (i *IdleTimeoutConn) Read(b []byte) (int, error) {
-	i.Conn.SetReadDeadline(time.Now().Add(i.Timeout))
+	err := i.Conn.SetReadDeadline(time.Now().Add(i.ReadTimeout))
+	if err != nil {
+		return 0, err
+	}
 	return i.Conn.Read(b)
-}
-
-func (i *IdleTimeoutConn) Write(b []byte) (int, error) {
-	i.Conn.SetWriteDeadline(time.Now().Add(i.Timeout))
-	return i.Conn.Write(b)
-}
-
-func (i *IdleTimeoutConn) Close() error {
-	return i.Conn.Close()
 }
 
 func IsTimeout(err error) bool {
@@ -47,18 +43,14 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
-	tDst := &IdleTimeoutConn{
-		Conn:    dst,
-		Timeout: time.Second * 15,
-	}
 	tSrc := &IdleTimeoutConn{
-		Conn:    src,
-		Timeout: time.Second * 10,
+		Conn:        src,
+		ReadTimeout: time.Second * 60,
 	}
 
 	wg.Add(2)
-	go pipe(ctx, &wg, err, tSrc, tDst)
-	go pipe(ctx, &wg, err, tDst, tSrc)
+	go pipe(ctx, &wg, err, dst, tSrc)
+	go pipe(ctx, &wg, err, src, dst)
 	go func() {
 		wg.Wait()
 		close(err)
