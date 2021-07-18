@@ -46,6 +46,10 @@ jobs:
         run: |
           CGO_ENABLED=0 GOARCH=arm64 GOOS=darwin go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-client-darwin-arm64 ./cmd/client
           CGO_ENABLED=0 GOARCH=arm64 GOOS=darwin go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-server-darwin-arm64 ./cmd/server
+      - name: Build illumos/amd64
+        run: |
+          CGO_ENABLED=0 GOARCH=amd64 GOOS=illumos go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-client-illumos-amd64 ./cmd/client
+          CGO_ENABLED=0 GOARCH=amd64 GOOS=illumos go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-server-illumos-amd64 ./cmd/server
 
       - name: Release Binaries
         if: startsWith(github.ref, 'refs/tags/')
