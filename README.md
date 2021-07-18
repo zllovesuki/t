@@ -21,9 +21,9 @@ The peers have to be publicly accessible on the Internet (they are the gateway, 
 # How to Use
 
 1. First you need a publicly accessible host. You can run one for $5 a month or cheaper from your favorite cloud/vps providers;
-2. Configure RFC2136 settings (work in progress). This is for completing the `dns-01` challenge for Let's Encrypt as we will be requesting for wildcard certificate;
+2. Configure RFC2136 settings. This is for completing the `dns-01` challenge for Let's Encrypt as we will be requesting for wildcard certificate;
 3. Configure the rest of `config.yaml`, then run the `server -config config.yaml` with your favorite manager (e.g. Systemd);
-4. Run `client -peer example.com:11111 -forward 127.0.0.1:3000`, and you should see a FQDN hostname ready to be used to tunnel HTTPS request to your apps running locally.
+4. Run `client -where tunnel.example.com -forward 127.0.0.1:3000`, and you should see a FQDN hostname ready to be used to tunnel HTTPS request to your apps running locally.
 
 # How to Build
 
@@ -40,14 +40,16 @@ This will build static binary ready for distribution.
 # Bootstrapping your Tunnel Network
 
 1. Configure your `config.yaml`, firewall rules, peer certificates, etc, then use Let's Encrypt staging environment on one node and start the server.
-2. If it created a new account and requested a new certificate, remove the `accounts.json` and `bundle.json`, as they are for testing only.
-3. Change the Let's Encrypt dirctory to `production`, then start the first node again.
-4. Depending on your DNS, it may fail authorization for the initial tries. However, once the cert has issued successfully, you can now start up other nodes one by one.
-5. They will be synchronized on startup. The client and gateway now should see a valid certificate issued by Let's Encrypt.
+2. If it created a new account and requested a new certificate, your configuration is good to go!
+3. Remove the `accounts.json` and `bundle.json`, as they are for testing only.
+4. Change the Let's Encrypt dirctory to `production`, then start the first node again.
+5. Depending on your DNS, it may fail authorization for the initial tries. However, once the cert has issued successfully, you can now start up other nodes one by one.
+6. They will be synchronized on startup. The client and gateway now should see a valid certificate issued by Let's Encrypt.
+7. You can run just one node as well. Clustering is optional.
 
 # TODO
 
 1. Write the damn tests
-2. Make `client` command less painful to use
+2. ~~Make `client` command less painful to use~~ now with `-where` auto discovery
 3. Multi-peer support from the client for HA. The plumbing is there to support it.
 4. Make leader determination and ACME management less painful

@@ -1,0 +1,22 @@
+[Unit]
+Description=t
+Documentation=https://github.com/zllovesuki/t
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=simple
+User=t
+Group=t
+WorkingDirectory=/t
+ExecStart=/t/server -config /t/config.yaml
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ReadWritePaths=/t
+
+[Install]
+WantedBy=multi-user.target
