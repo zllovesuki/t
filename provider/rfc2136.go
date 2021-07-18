@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/zllovesuki/t/acme"
+
 	"github.com/miekg/dns"
-	"github.com/zllovesuki/t/app"
 )
 
 type RFC2136Config struct {
@@ -25,7 +26,7 @@ type RFC2136 struct {
 	zone       string
 }
 
-var _ app.Provider = &RFC2136{}
+var _ acme.Provider = &RFC2136{}
 
 func NewRFC2136Provider(conf RFC2136Config) (*RFC2136, error) {
 	return &RFC2136{
@@ -46,10 +47,10 @@ func (r *RFC2136) newClient() *dns.Client {
 	return client
 }
 
-func (r *RFC2136) buildMsg(host string, ip string) (*dns.Msg, []dns.RR) {
-	aRR, err := dns.NewRR(fmt.Sprintf("%s.%s %d IN A %s", host, r.zone, 60, ip))
+func (r *RFC2136) buildMsg(host string, t string, value string) (*dns.Msg, []dns.RR, error) {
+	aRR, err := dns.NewRR(fmt.Sprintf("%s.%s %d IN %s %s", host, r.zone, 15, t, value))
 	if err != nil {
-		panic(err)
+		return nil, nil, err
 	}
 	rrs := []dns.RR{aRR}
 
@@ -57,13 +58,16 @@ func (r *RFC2136) buildMsg(host string, ip string) (*dns.Msg, []dns.RR) {
 	m.SetUpdate(r.zone)
 	m.SetTsig(r.conf.TSIGKey, r.conf.TSIGAlgo, 300, time.Now().Unix())
 
-	return m, rrs
+	return m, rrs, nil
 }
 
-func (r *RFC2136) Update(ctx context.Context, host string, ip string) (bool, error) {
+func (r *RFC2136) Update(ctx context.Context, host string, t string, value string) (bool, error) {
 	c := r.newClient()
 
-	m, rrs := r.buildMsg(host, ip)
+	m, rrs, err := r.buildMsg(host, t, value)
+	if err != nil {
+		return false, err
+	}
 
 	m.RemoveRRset(rrs)
 	m.Insert(rrs)
@@ -78,10 +82,13 @@ func (r *RFC2136) Update(ctx context.Context, host string, ip string) (bool, err
 	return in.Rcode == dns.RcodeSuccess, nil
 }
 
-func (r *RFC2136) Remove(ctx context.Context, host string, ip string) (bool, error) {
+func (r *RFC2136) Remove(ctx context.Context, host string, t string, value string) (bool, error) {
 	c := r.newClient()
 
-	m, rrs := r.buildMsg(host, ip)
+	m, rrs, err := r.buildMsg(host, t, value)
+	if err != nil {
+		return false, err
+	}
 
 	m.Remove(rrs)
 
