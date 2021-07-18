@@ -18,8 +18,8 @@ var tmpl string
 var index string
 
 type apexServer struct {
-	clientPort int
 	domain     string
+	clientPort int
 	mdTmpl     *template.Template
 	indexTmpl  *template.Template
 }

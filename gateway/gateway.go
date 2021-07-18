@@ -24,6 +24,7 @@ type GatewayConfig struct {
 	Listener    net.Listener
 	RootDomain  string
 	ClientPort  int
+	GatewayPort int
 }
 
 type Gateway struct {
@@ -41,6 +42,10 @@ func New(conf GatewayConfig) (*Gateway, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "reading index for apex template")
 	}
+	d := conf.RootDomain
+	if conf.GatewayPort != 443 {
+		d = fmt.Sprintf("%s:%d", d, conf.GatewayPort)
+	}
 	return &Gateway{
 		GatewayConfig: conf,
 		apexAcceptor: &httpAccepter{
@@ -49,7 +54,7 @@ func New(conf GatewayConfig) (*Gateway, error) {
 		},
 		apexServer: &apexServer{
 			clientPort: conf.ClientPort,
-			domain:     conf.RootDomain,
+			domain:     d,
 			mdTmpl:     md,
 			indexTmpl:  idx,
 		},

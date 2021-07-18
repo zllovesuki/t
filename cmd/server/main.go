@@ -183,6 +183,7 @@ func main() {
 		Listener:    gatewayListener,
 		RootDomain:  bundle.Web.Domain,
 		ClientPort:  bundle.Multiplexer.Client,
+		GatewayPort: *webPort,
 	})
 	if err != nil {
 		logger.Fatal("setting up gateway server", zap.Error(err))
