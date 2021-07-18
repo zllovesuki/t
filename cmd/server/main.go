@@ -85,8 +85,8 @@ func main() {
 
 	if *disableAcme {
 		logger.Warn("ACME is disabled: no cert checking nor issuance.")
-		certManager.LoadAccountFromFile()
 	}
+	certManager.LoadAccountFromFile()
 	certManager.LoadBundleFromFile()
 
 	ctx, cancel := context.WithCancel(context.Background())
