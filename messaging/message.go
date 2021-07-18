@@ -7,12 +7,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Message struct {
-	Type MessageType
-	From uint64
-	Data []byte
-}
-
 func (m *Message) Pack() []byte {
 	dl := len(m.Data)
 	buf := make([]byte, messageHeaderLength+dl)
@@ -40,10 +34,12 @@ func (m *Message) ReadFrom(conn net.Conn) error {
 	if l != messageHeaderLength {
 		return errors.New("mismatched header length")
 	}
+
 	m.Type = MessageType(binary.BigEndian.Uint64(head[8:16]))
 	m.From = binary.BigEndian.Uint64(head[16:messageHeaderLength])
 	dl := int(binary.BigEndian.Uint64(head[0:8]))
 	m.Data = make([]byte, dl)
+
 	l, err = conn.Read(m.Data)
 	if err != nil {
 		return errors.Wrap(err, "reading message data")

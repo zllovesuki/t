@@ -2,20 +2,12 @@ package messaging
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"runtime"
 	"time"
 
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
-)
-
-var (
-	ErrRPCTimeout = fmt.Errorf("rpc call timeout")
-)
-
-const (
-	rrHeaderLength = 17
 )
 
 type requestReply struct {
@@ -46,24 +38,11 @@ func (r *requestReply) Unpack(b []byte) {
 	copy(r.data, b[rrHeaderLength:])
 }
 
-type Request struct {
-	Reply chan []byte
-	Data  []byte
-}
-
 func (c *Channel) HandleRequest() <-chan Request {
 	return c.req
 }
 
 func (c *Channel) Call(peer uint64, b []byte) (rep []byte, err error) {
-	defer func() {
-		if e := recover(); e != nil {
-			rep = nil
-			err = ErrPeerGone
-			c.logger.Error("rpc call request panic", zap.Any("error", e))
-		}
-	}()
-
 	repCh := make(chan []byte)
 	var key uint64
 	for {
@@ -86,19 +65,10 @@ func (c *Channel) Call(peer uint64, b []byte) (rep []byte, err error) {
 		Type: messageRequestReply,
 		Data: r.Pack(),
 	}
-	buf := m.Pack()
-	p, ok := c.peers.Load(peer)
-	if !ok {
-		return nil, ErrPeerGone
-	}
-	// TODO(zllovesuki): potential race here
-	conn := p.(*messageChannel).conn
-	w, err := conn.Write(buf)
+	err = c.write(peer, m)
 	if err != nil {
-		return nil, err
-	}
-	if w != len(buf) {
-		return nil, err
+		err = errors.Wrap(err, "sending request to peer")
+		return
 	}
 	select {
 	case <-time.After(time.Second * 10):
@@ -109,12 +79,6 @@ func (c *Channel) Call(peer uint64, b []byte) (rep []byte, err error) {
 }
 
 func (c *Channel) handleRPC(sender uint64, r requestReply) {
-	defer func() {
-		if e := recover(); e != nil {
-			c.logger.Error("rpc call reply panic", zap.Any("error", e))
-		}
-	}()
-
 	switch r.request {
 	case true:
 		repCh := make(chan []byte)
@@ -129,31 +93,18 @@ func (c *Channel) handleRPC(sender uint64, r requestReply) {
 		case r.data = <-repCh:
 			r.request = false
 		}
-		// TODO(zllovesuki): potential race here
-		p, ok := c.peers.Load(sender)
-		if !ok {
-			return
-		}
-		conn := p.(*messageChannel).conn
 		reply := Message{
 			From: c.self,
 			Type: messageRequestReply,
 			Data: r.Pack(),
 		}
-		buf := reply.Pack()
-		w, err := conn.Write(buf)
-		if err != nil {
-			c.logger.Error("replying to caller", zap.Error(err))
-			return
-		}
-		if w != len(buf) {
-			c.logger.Error("mismatched length")
-			return
+		if err := c.write(sender, reply); err != nil {
+			c.logger.Error("rpc: enqueuing outbound response to peer", zap.Uint64("sender", sender), zap.Error(err))
 		}
 	case false:
 		x, ok := c.rr.LoadAndDelete(r.key)
 		if !ok {
-			c.logger.Error("response channel gone")
+			c.logger.Error("rpc: response channel gone", zap.Uint64("sender", sender))
 			return
 		}
 		x.(chan []byte) <- r.data
