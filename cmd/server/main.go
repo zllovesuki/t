@@ -13,7 +13,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
+	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/server"
 
 	"go.uber.org/zap"
@@ -67,10 +69,21 @@ func main() {
 	if err != nil {
 		logger.Fatal("loading peer certificates", zap.Error(err))
 	}
-	clientCert, err := tls.LoadX509KeyPair(bundle.TLS.Client.Cert, bundle.TLS.Client.Key)
+
+	// TODO(zllovesuki): make it configurable
+	rfc2136, err := provider.NewRFC2136Provider(bundle.RFC2136)
 	if err != nil {
-		logger.Fatal("loading client/gateway certificates", zap.Error(err))
+		logger.Fatal("setting up rfc2136 provider", zap.Error(err))
 	}
+
+	bundle.ACME.DNSProvider = rfc2136
+	certManager, err := acme.New(bundle.ACME)
+	if err != nil {
+		logger.Fatal("setting up cert manager", zap.Error(err))
+	}
+
+	certManager.LoadAccountFromFile()
+	certManager.LoadBundleFromFile()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -100,7 +113,7 @@ func main() {
 
 	clientTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
-		Certificates:             []tls.Certificate{clientCert},
+		GetCertificate:           certManager.GetCertificatesFunc,
 		ClientAuth:               tls.NoClientCert,
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
@@ -109,7 +122,7 @@ func main() {
 
 	gatwayTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
-		Certificates:             []tls.Certificate{clientCert},
+		GetCertificate:           certManager.GetCertificatesFunc,
 		ClientAuth:               tls.NoClientCert,
 		NextProtos:               []string{"http/1.1"},
 		MinVersion:               tls.VersionTLS11,
@@ -149,8 +162,9 @@ func main() {
 		PeerListener:   peerListener,
 		PeerTLSConfig:  peerTLSConfig,
 		ClientListener: clientListener,
-		Multiplexer:    *bundle.Multiplexer,
-		Gossip:         *bundle.Gossip,
+		Multiplexer:    bundle.Multiplexer,
+		Gossip:         bundle.Gossip,
+		CertManager:    certManager,
 		Domain:         domain,
 	})
 	if err != nil {

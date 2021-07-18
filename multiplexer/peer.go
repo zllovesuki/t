@@ -2,6 +2,7 @@ package multiplexer
 
 import (
 	"context"
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -78,7 +79,9 @@ func (p *Peer) Start(ctx context.Context) {
 		default:
 			conn, err := p.session.AcceptStream()
 			if err != nil {
-				p.logger.Error("accepting stream from peers", zap.Error(err))
+				if !errors.Is(err, io.EOF) {
+					p.logger.Error("accepting stream from peers", zap.Error(err))
+				}
 				return
 			}
 			go p.streamHandshake(ctx, conn)
@@ -100,6 +103,10 @@ func (p *Peer) Null(ctx context.Context) {
 		p.logger.Warn("nulled Peer attempted to request a new stream")
 		p.Bye()
 	}
+}
+
+func (p *Peer) Addr() net.Addr {
+	return p.config.Conn.RemoteAddr()
 }
 
 func (p *Peer) streamHandshake(c context.Context, conn net.Conn) {

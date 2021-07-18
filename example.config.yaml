@@ -1,7 +1,37 @@
 web:
   # this is the domain part of the web gateway. The generated tunnel name will be
-  # something like: dramatize-detergent-donator-mutable-election.example.com
-  domain: example.com
+  # something like: dramatize-detergent-donator-mutable-election.tunnel.example.com
+  # note: this domain name must be part of the acme.provider.rfc2136.zone below
+  domain: tunnel.example.com
+
+# certificate for the gateway and client connection will be issued by Let's Encrypt.
+# until a certificate is issued, gateway and client will not be usable. However,
+# once you bootstrap the leader node, the follower nodes will receive the certificates
+# via state synchronization
+
+acme:
+  # this is used for automatic certificate issurance. Any RFC8555 complaint CA 
+  # that supports dns-01 challenge will work.
+  # the following directory is used for testing. change the directory to https://acme-v02.api.letsencrypt.org/directory
+  # when you are ready to issue usable Let's Encrypt certificates
+  directory: https://acme-staging-v02.api.letsencrypt.org/directory
+  contact: mailto:your@domain.name
+  # this directory will store the account key on each of the peer. A leader election
+  # will be held, and only the leader will have permission to request certificates and
+  # distribute the certificates to other peers.
+  # however, since any of the peers can become leader, the key will be shared to other peers
+  # via encrypted peer channel.
+  dataDir: /path/to/safe/storage
+  provider:
+    # currently, only RFC2136 dns provider is supported
+    rfc2136:
+      # note: if your domain root is example.com, but you want to have tunnels
+      # at *.tunnel.example.com, the certificate will be issued to *.tunnel.example.com
+      zone: example.com
+      tsigKey: sign.
+      tsigSecret: yoursecrethere==
+      tsigAlgo: hmac-sha256
+      nameserver: dns.example.com:53
 
 multiplexer:
   # this should be publicly accessible for other peers and clients
@@ -14,15 +44,11 @@ multiplexer:
 tls:
   # peer certificates should be self-signed with "server auth" and "client auth"
   # additionally, one of the SANs must be "t_Peer" (case sensitive)
+  # I recommend using cfssl if you are new to self-signing
   peer:
     ca: tls/ca.pem
     cert: tls/peer.pem
     key: tls/peer-key.pem
-  # this should be signed by a public CA, e.g. Let's Encrypt, as the multiplexer
-  # and the web gateway uses this cert
-  client:
-    cert: tls/dev.pem
-    key: tls/dev-key.pem
 
 gossip:
   port: 12345

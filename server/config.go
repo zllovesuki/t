@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/zllovesuki/t/acme"
+
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -29,6 +31,7 @@ type Config struct {
 	ClientListener net.Listener
 	Multiplexer    MultiplexerConfig
 	Gossip         GossipConfig
+	CertManager    *acme.CertManager
 	Domain         string
 }
 
@@ -47,6 +50,9 @@ func (c *Config) validate() error {
 	}
 	if c.ClientListener == nil {
 		return errors.New("nil client listener is invalid")
+	}
+	if c.CertManager == nil {
+		return errors.New("nil cert manager is invalid")
 	}
 	if c.Domain == "" {
 		return errors.New("empty domain is invalid")

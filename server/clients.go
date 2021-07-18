@@ -89,6 +89,7 @@ func (s *Server) clientHandshake(conn net.Conn) {
 
 func (s *Server) handleClientEvents() {
 	for peer := range s.clients.Notify() {
+		s.logger.Info("client destination registered", zap.Uint64("peerID", peer.Peer()), zap.String("remote", peer.Addr().String()))
 		// update our peer graph with the client as this may block with
 		// many clients connecting
 		go func(p *multiplexer.Peer) {

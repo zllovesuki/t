@@ -9,13 +9,14 @@ import (
 	"net"
 	"time"
 
-	"github.com/hashicorp/memberlist"
+	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/messaging"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server/state"
-	"go.uber.org/zap"
 
+	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -36,10 +37,12 @@ type Server struct {
 	updatesCh      chan *state.ConnectedClients
 	currentLeader  *uint64
 	membershipCh   chan struct{}
+	startLeader    chan struct{}
+	stopLeader     chan struct{}
+	certManager    *acme.CertManager
 }
 
 func New(conf Config) (*Server, error) {
-
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
@@ -79,6 +82,9 @@ func New(conf Config) (*Server, error) {
 		updatesCh:      make(chan *state.ConnectedClients, 16),
 		currentLeader:  new(uint64),
 		membershipCh:   make(chan struct{}, 1),
+		startLeader:    make(chan struct{}, 1),
+		stopLeader:     make(chan struct{}, 1),
+		certManager:    conf.CertManager,
 		broadcasts: &memberlist.TransmitLimitedQueue{
 			NumNodes: func() int {
 				// include ourself

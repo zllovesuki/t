@@ -19,12 +19,9 @@ var (
 )
 
 // PeerMap maintains the mapping between a Peer and their corresponding
-// *multiplexer.Peer connection. Since the Peers are discovered via gossip
-// and two peers in the same multiplex.Pair can attempt to handshake at the same time,
-// a RingMutex with sync.Map is used to provide locking and reduce contentions
-// for other connecting Peers. When a disjointed set of Peers joined, they can make progress,
-// but only either the initiator or the responder of the same multiplexer.Pair can
-// hold a full-duplex session.
+// *multiplexer.Peer connection. Although Peers are discovered via gossip,
+// who gets to initiate the connection is decided by the ordinality of their
+// PeerIDs. If they happened to have the same PeerID, they will panic to restart.
 type PeerMap struct {
 	self   uint64
 	peers  *sync.Map
@@ -78,9 +75,9 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 	case <-time.After(conf.Wait):
 	}
 
-	s.notify <- p
 	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)
+	s.notify <- p
 
 	return nil
 }

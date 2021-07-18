@@ -2,14 +2,17 @@ package server
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/server/state"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -57,21 +60,23 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 		return
 	}
 
+	logger := s.logger.With(zap.Any("meta", m))
+
 	if m.PeerID == s.PeerID() {
-		s.logger.Fatal("gossip: new peer has the same ID as current node", zap.Any("meta", m), zap.Uint64("self", s.PeerID()))
+		logger.Fatal("gossip: new peer has the same ID as current node", zap.Uint64("self", s.PeerID()))
 	}
 
-	s.logger.Info("gossip: new peer discovered via gossip", zap.Any("meta", m))
+	s.logger.Info("gossip: new peer discovered via gossip")
 
 	if m.PeerID < s.PeerID() {
-		s.logger.Info("gossip: new peer has a lower PeerID, acting as responder")
+		logger.Info("gossip: new peer has a lower PeerID, acting as responder")
 		go func(m Meta) {
 			time.Sleep(time.Second * 10)
 
 			if s.peers.Get(m.PeerID) != nil {
 				return
 			}
-			s.logger.Warn("gossip: new peer not connected after 10 seconds, attempt to reach out", zap.Any("meta", m))
+			logger.Warn("gossip: new peer not connected after 10 seconds, attempt to reach out")
 			go s.connectPeer(m)
 		}(m)
 		return
@@ -105,9 +110,34 @@ func (s *Server) NodeMeta(limit int) []byte {
 	return s.Meta()
 }
 
+type ACMESynchronization struct {
+	AccountFile *acme.AccountFile
+	Bundle      *acme.Bundle
+}
+
 func (s *Server) LocalState(join bool) []byte {
 	if join {
-		return nil
+		s.logger.Info("gossip: new peer joining, sending acme synchronization details")
+		af, err := s.certManager.ExportAccount()
+		if err != nil {
+			s.logger.Error("gossip: exporting acme account for synchronization", zap.Error(err))
+			return nil
+		}
+		bundle, err := s.certManager.ExportBundle()
+		if err != nil {
+			s.logger.Error("gossip: exporting acme bundle for synchronization", zap.Error(err))
+			return nil
+		}
+		as := ACMESynchronization{
+			AccountFile: af,
+			Bundle:      bundle,
+		}
+		b, err := json.Marshal(&as)
+		if err != nil {
+			s.logger.Error("gossip: marshaling acme synchronization", zap.Error(err))
+			return nil
+		}
+		return b
 	}
 	c := state.ConnectedClients{
 		Peer:    s.PeerID(),
@@ -117,7 +147,33 @@ func (s *Server) LocalState(join bool) []byte {
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
-	if len(buf) == 0 || join {
+	if len(buf) == 0 {
+		return
+	}
+	if join {
+		var as ACMESynchronization
+		err := json.Unmarshal(buf, &as)
+		if err != nil {
+			s.logger.Error("gossip: unmarshaling acme synchronization", zap.Error(err))
+			return
+		}
+		if as.AccountFile == nil || as.Bundle == nil {
+			s.logger.Info("gossip: ignoring incomplete acme synchronization")
+			return
+		}
+		s.logger.Info("gossip: received acme synchronization details")
+		err = s.certManager.ImportAccount(*as.AccountFile, true)
+		if err != nil {
+			if !errors.Is(err, acme.ErrAccountExists) {
+				s.logger.Error("gossip: importing acme account from synchronization", zap.Error(err))
+				return
+			}
+		}
+		err = s.certManager.ImportBundle(*as.Bundle, true)
+		if err != nil {
+			s.logger.Error("gossip: importing acme bundle from synchronization", zap.Error(err))
+			return
+		}
 		return
 	}
 	var c state.ConnectedClients
@@ -174,16 +230,20 @@ func (s *Server) connectPeer(m Meta) {
 
 func (s *Server) handleMerge() {
 	for x := range s.updatesCh {
+		if x.Peer == s.PeerID() {
+			continue
+		}
 		// because of the properties of our design:
 		// 1. client PeerIDs are unique across sessions
 		// 2. only a maximum of single hop is allowed inter-peers
 		// thus, we can replace our peer's peer graph with the incoming one
 		// if c.Ring() differs from the ring in our peer graph.
 		go func(u *state.ConnectedClients) {
-			s.logger.Debug("push/pull: processing state transfer", zap.Uint64("Peer", u.Peer))
+			logger := s.logger.With(zap.Uint64("peer", u.Peer))
+			logger.Debug("push/pull: processing state transfer")
 			if s.peerGraph.Replace(u) {
-				s.logger.Info("push/pull: peer graph was updated", zap.Uint64("Peer", u.Peer))
-				s.logger.Sugar().Debugf("peerGraph at time %s:\n%+v", time.Now().Format(time.RFC3339), s.peerGraph)
+				logger.Info("push/pull: peer graph was updated")
+				logger.Sugar().Debugf("peerGraph at time %s:\n%+v", time.Now().Format(time.RFC3339), s.peerGraph)
 			}
 		}(x)
 	}

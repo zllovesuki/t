@@ -73,18 +73,14 @@ func (p *PeerGraph) RemovePeer(peer uint64) {
 
 func (p *PeerGraph) removePeer(peer uint64) {
 	var length int
-	neighbors := make([]uint64, 0)
 	for _, neighbor := range p.edges[peer] {
 		for i, d := range p.edges[neighbor] {
 			if d == peer {
-				neighbors = append(neighbors, neighbor)
 				length = len(p.edges[neighbor])
 				p.edges[neighbor][i] = p.edges[neighbor][length-1]
 				p.edges[neighbor] = p.edges[neighbor][:length-1]
 			}
 		}
-	}
-	for _, neighbor := range neighbors {
 		if len(p.edges[neighbor]) == 0 && neighbor != p.self {
 			delete(p.edges, neighbor)
 		}
@@ -118,10 +114,7 @@ func (p *PeerGraph) String() string {
 	for peer, neighbors := range p.edges {
 		sb.WriteString(fmt.Sprint(peer))
 		sb.WriteString(" -> ")
-		for _, neighbor := range neighbors {
-			sb.WriteString(fmt.Sprint(neighbor))
-			sb.WriteString(" ")
-		}
+		sb.WriteString(fmt.Sprint(neighbors))
 		sb.WriteString("\n")
 	}
 	p.mu.RUnlock()
