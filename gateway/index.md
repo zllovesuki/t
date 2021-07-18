@@ -4,7 +4,7 @@ To learn more about `t`, visit [github.com/zllovesuki/t](https://github.com/zllo
 
 # Endpoint
 
-You connect to `t` under the domain of
+You are visiting the `t` instance under the owner of
 ```
 {{.Domain}}
 ```
@@ -12,7 +12,7 @@ You connect to `t` under the domain of
 Using the client for your operating system, and run
 
 ```
-./client -where {{.Domain}} -forward http://127.0.0.1:3000
+./client -where {{.Domain}} -forward http://127.0.0.1:{{.Port}}
 ```
 
 Now you can have a tunnel for your locally running apps!
@@ -21,6 +21,8 @@ Now you can have a tunnel for your locally running apps!
 ==================================================
 
 Your Hostname: https://{{.Random}}.{{.Domain}}
+
+Requests will be forwarded to: http://127.0.0.1:{{.Port}}
 
 ==================================================
 ```

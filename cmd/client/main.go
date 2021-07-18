@@ -133,7 +133,8 @@ func main() {
 	logger.Info("Peering established", zap.Any("pair", pair), zap.Duration("rtt", rtt))
 
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
-	fmt.Printf("Your Hostname: %+v\n", g.Hostname)
+	fmt.Printf("Your Hostname: %+v\n\n", g.Hostname)
+	fmt.Printf("Requests will be forwarded to: %+v\n", *forward)
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 
 	sigs := make(chan os.Signal, 1)

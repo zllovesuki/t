@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"math/rand"
 	"net/http"
 	"text/template"
 
@@ -35,9 +36,11 @@ func (a *apexServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	err = a.mdTmpl.Execute(&md, struct {
 		Domain string
 		Random string
+		Port   int
 	}{
 		Domain: a.domain,
 		Random: shared.RandomHostname(),
+		Port:   rand.Intn(50000) + 1024,
 	})
 	if err != nil {
 		return
