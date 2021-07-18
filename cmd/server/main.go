@@ -28,12 +28,13 @@ const (
 )
 
 var (
-	configPath = flag.String("config", "config.yaml", "path to the config.yaml")
-	peerPort   = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
-	gossipPort = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
-	clientPort = flag.Int("clientPort", defaultClientPort, "override config clientPort")
-	webPort    = flag.Int("webPort", 443, "gateway port for forwarding to clients")
-	debug      = flag.Bool("debug", false, "verbose logging")
+	disableAcme = flag.Bool("disableACME", false, "disable acme functions and use bundle.json as it")
+	configPath  = flag.String("config", "config.yaml", "path to the config.yaml")
+	peerPort    = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
+	gossipPort  = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
+	clientPort  = flag.Int("clientPort", defaultClientPort, "override config clientPort")
+	webPort     = flag.Int("webPort", 443, "gateway port for forwarding to clients")
+	debug       = flag.Bool("debug", false, "verbose logging")
 )
 
 func main() {
@@ -165,6 +166,7 @@ func main() {
 		Multiplexer:    bundle.Multiplexer,
 		Gossip:         bundle.Gossip,
 		CertManager:    certManager,
+		DisableACME:    *disableAcme,
 		Domain:         domain,
 	})
 	if err != nil {
