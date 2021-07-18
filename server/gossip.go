@@ -162,14 +162,14 @@ func (s *Server) MergeRemoteState(buf []byte, join bool) {
 			return
 		}
 		s.logger.Info("gossip: received acme synchronization details")
-		err = s.certManager.ImportAccount(*as.AccountFile, true)
+		err = s.certManager.ImportAccount(*as.AccountFile, !s.config.DisableACME)
 		if err != nil {
 			if !errors.Is(err, acme.ErrAccountExists) {
 				s.logger.Error("gossip: importing acme account from synchronization", zap.Error(err))
 				return
 			}
 		}
-		err = s.certManager.ImportBundle(*as.Bundle, true)
+		err = s.certManager.ImportBundle(*as.Bundle, !s.config.DisableACME)
 		if err != nil {
 			s.logger.Error("gossip: importing acme bundle from synchronization", zap.Error(err))
 			return

@@ -27,8 +27,13 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+const (
+	defaultWhere = "tunnel.example.com"
+)
+
 var (
-	peer    = flag.String("peer", "127.0.0.1:11111", "peering targer")
+	peer    = flag.String("peer", "127.0.0.1:11111", "specify the peering target")
+	where   = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
 	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
 )
 
@@ -49,10 +54,30 @@ func main() {
 		logger.Fatal("only http/https schema is supported", zap.String("schema", u.Scheme))
 	}
 
+	peerTarget := *peer
+	if *where != defaultWhere {
+		client := &http.Client{
+			Timeout: time.Second * 5,
+		}
+		resp, err := client.Get(fmt.Sprintf("https://%s/where", *where))
+		if err != nil {
+			logger.Fatal("auto discovering peer", zap.Error(err))
+		}
+		if resp.StatusCode != http.StatusOK {
+			logger.Fatal("auto discovering returns non-200 response code", zap.Int("code", resp.StatusCode))
+		}
+		var w shared.Where
+		if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
+			logger.Fatal("cannot recode auto discovering result", zap.Error(err))
+		}
+		resp.Body.Close()
+		peerTarget = fmt.Sprintf("%s:%d", w.Addr, w.Port)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector, err := tls.Dial("tcp", *peer, nil)
+	connector, err := tls.Dial("tcp", peerTarget, nil)
 	if err != nil {
 		logger.Error("connecting to peer", zap.Error(err))
 		return

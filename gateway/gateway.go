@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -21,19 +22,44 @@ type GatewayConfig struct {
 	Logger      *zap.Logger
 	Multiplexer *server.Server
 	Listener    net.Listener
+	RootDomain  string
+	ClientPort  int
 }
 
 type Gateway struct {
 	GatewayConfig
+	apexAcceptor *httpAccepter
+	apexServer   *apexServer
 }
 
-func New(conf GatewayConfig) *Gateway {
+func New(conf GatewayConfig) (*Gateway, error) {
+	md, err := template.New("content").Parse(tmpl)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading markdown for apex template")
+	}
+	idx, err := template.New("index").Parse(index)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading index for apex template")
+	}
 	return &Gateway{
 		GatewayConfig: conf,
-	}
+		apexAcceptor: &httpAccepter{
+			parent: conf.Listener,
+			ch:     make(chan net.Conn),
+		},
+		apexServer: &apexServer{
+			clientPort: conf.ClientPort,
+			domain:     conf.RootDomain,
+			mdTmpl:     md,
+			indexTmpl:  idx,
+		},
+	}, nil
 }
 
 func (g *Gateway) Start(ctx context.Context) {
+
+	go http.Serve(g.apexAcceptor, g.apexServer.Handler())
+
 	for {
 		conn, err := g.Listener.Accept()
 		if err != nil {
@@ -46,21 +72,34 @@ func (g *Gateway) Start(ctx context.Context) {
 }
 
 func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
-	defer conn.CloseWrite()
-
-	select {
-	case <-time.After(time.Second * 5):
-		g.Logger.Info("tls handshake timeout", zap.Any("remoteAddr", conn.RemoteAddr()))
-		return
-	default:
-		err := conn.Handshake()
-		if err != nil {
-			g.Logger.Error("tls handshake failed", zap.Error(err))
+	var rerouted bool
+	defer func() {
+		if rerouted {
 			return
 		}
+		conn.CloseWrite()
+	}()
+
+	conn.SetDeadline(time.Now().Add(time.Second * 5))
+	err := conn.Handshake()
+	if err != nil {
+		g.Logger.Error("tls handshake failed", zap.Error(err))
+		return
+	}
+	conn.SetDeadline(time.Time{})
+
+	cs := conn.ConnectionState()
+
+	switch cs.ServerName {
+	case g.RootDomain:
+		// route to main page
+		rerouted = true
+		g.apexAcceptor.ch <- conn
+		return
+	default:
 	}
 
-	xd := strings.Split(conn.ConnectionState().ServerName, ".")
+	xd := strings.Split(cs.ServerName, ".")
 	clientID := shared.PeerHash(xd[0])
 	logger := g.Logger.With(zap.Uint64("ClientID", clientID))
 

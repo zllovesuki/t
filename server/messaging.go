@@ -28,7 +28,7 @@ func (s *Server) handlePeerMessaging(ch <-chan messaging.Message, peer uint64) {
 					s.logger.Error("unmarshaling acme account key from announcement", zap.Error(err))
 					continue
 				}
-				if err := s.certManager.ImportAccount(af, true); err != nil {
+				if err := s.certManager.ImportAccount(af, !s.config.DisableACME); err != nil {
 					s.logger.Error("importing acme account key from announcement", zap.Error(err))
 				}
 			case messaging.MessageClientCerts:
@@ -37,7 +37,7 @@ func (s *Server) handlePeerMessaging(ch <-chan messaging.Message, peer uint64) {
 					s.logger.Error("unmarshaling acme bundle from announcement", zap.Error(err))
 					continue
 				}
-				if err := s.certManager.ImportBundle(b, true); err != nil {
+				if err := s.certManager.ImportBundle(b, !s.config.DisableACME); err != nil {
 					s.logger.Error("importing acme bundle from announcement", zap.Error(err))
 				}
 			}

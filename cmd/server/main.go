@@ -28,12 +28,13 @@ const (
 )
 
 var (
-	configPath = flag.String("config", "config.yaml", "path to the config.yaml")
-	peerPort   = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
-	gossipPort = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
-	clientPort = flag.Int("clientPort", defaultClientPort, "override config clientPort")
-	webPort    = flag.Int("webPort", 443, "gateway port for forwarding to clients")
-	debug      = flag.Bool("debug", false, "verbose logging")
+	disableAcme = flag.Bool("disableACME", false, "disable acme functions and use bundle.json as it")
+	configPath  = flag.String("config", "config.yaml", "path to the config.yaml")
+	peerPort    = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
+	gossipPort  = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
+	clientPort  = flag.Int("clientPort", defaultClientPort, "override config clientPort")
+	webPort     = flag.Int("webPort", 443, "gateway port for forwarding to clients")
+	debug       = flag.Bool("debug", false, "verbose logging")
 )
 
 func main() {
@@ -82,7 +83,10 @@ func main() {
 		logger.Fatal("setting up cert manager", zap.Error(err))
 	}
 
-	certManager.LoadAccountFromFile()
+	if *disableAcme {
+		logger.Warn("ACME is disabled: no cert checking nor issuance.")
+		certManager.LoadAccountFromFile()
+	}
 	certManager.LoadBundleFromFile()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -165,10 +169,22 @@ func main() {
 		Multiplexer:    bundle.Multiplexer,
 		Gossip:         bundle.Gossip,
 		CertManager:    certManager,
+		DisableACME:    *disableAcme,
 		Domain:         domain,
 	})
 	if err != nil {
 		logger.Fatal("setting up multiplexer server", zap.Error(err))
+	}
+
+	g, err := gateway.New(gateway.GatewayConfig{
+		Logger:      logger,
+		Multiplexer: s,
+		Listener:    gatewayListener,
+		RootDomain:  bundle.Web.Domain,
+		ClientPort:  bundle.Multiplexer.Client,
+	})
+	if err != nil {
+		logger.Fatal("setting up gateway server", zap.Error(err))
 	}
 
 	if err := s.Gossip(); err != nil {
@@ -176,12 +192,6 @@ func main() {
 	}
 	s.ListenForPeers()
 	s.ListenForClients()
-
-	g := gateway.New(gateway.GatewayConfig{
-		Logger:      logger,
-		Multiplexer: s,
-		Listener:    gatewayListener,
-	})
 
 	go g.Start(ctx)
 
