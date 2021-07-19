@@ -54,7 +54,8 @@ func New(conf GatewayConfig) (*Gateway, error) {
 		},
 		apexServer: &apexServer{
 			clientPort: conf.ClientPort,
-			domain:     d,
+			hostname:   conf.RootDomain,
+			host:       d,
 			mdTmpl:     md,
 			indexTmpl:  idx,
 		},

@@ -18,7 +18,8 @@ var tmpl string
 var index string
 
 type apexServer struct {
-	domain     string
+	hostname   string
+	host       string
 	clientPort int
 	mdTmpl     *template.Template
 	indexTmpl  *template.Template
@@ -34,11 +35,11 @@ func (a *apexServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	err = a.mdTmpl.Execute(&md, struct {
-		Domain string
+		Host   string
 		Random string
 		Port   int
 	}{
-		Domain: a.domain,
+		Host:   a.host,
 		Random: shared.RandomHostname(),
 		Port:   rand.Intn(50000) + 1024,
 	})
@@ -60,7 +61,7 @@ func (a *apexServer) handleLookup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(shared.Where{
-		Addr: a.domain,
+		Addr: a.hostname,
 		Port: a.clientPort,
 	})
 }
