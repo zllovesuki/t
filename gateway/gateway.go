@@ -78,14 +78,6 @@ func (g *Gateway) Start(ctx context.Context) {
 }
 
 func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
-	var rerouted bool
-	defer func() {
-		if rerouted {
-			return
-		}
-		conn.CloseWrite()
-	}()
-
 	conn.SetDeadline(time.Now().Add(time.Second * 5))
 	err := conn.Handshake()
 	if err != nil {
@@ -95,8 +87,15 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	}
 	conn.SetDeadline(time.Time{})
 
-	cs := conn.ConnectionState()
+	var rerouted bool
+	defer func() {
+		if rerouted {
+			return
+		}
+		conn.CloseWrite()
+	}()
 
+	cs := conn.ConnectionState()
 	switch cs.ServerName {
 	case g.RootDomain:
 		// route to main page
