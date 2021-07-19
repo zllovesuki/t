@@ -13,6 +13,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	bufferSize = 32 * 1024
+)
+
+var copyBufPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, bufferSize)
+		return &b
+	},
+}
+
 type IdleTimeoutConn struct {
 	net.Conn
 	ReadTimeout time.Duration
@@ -63,7 +74,9 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 
 func pipe(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error, dst, src net.Conn) {
 	defer wg.Done()
-	if _, err := io.Copy(dst, util.NewCtxReader(ctx, src)); err != nil {
+	pBuf := copyBufPool.Get().(*[]byte)
+	defer copyBufPool.Put(pBuf)
+	if _, err := io.CopyBuffer(dst, util.NewCtxReader(ctx, src), *pBuf); err != nil {
 		errChan <- err
 		return
 	}
