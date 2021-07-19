@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -26,14 +27,14 @@ type PeerMap struct {
 	self   uint64
 	peers  *sync.Map
 	logger *zap.Logger
-	notify chan *multiplexer.Peer
+	notify chan multiplexer.Peer
 	num    *uint64
 }
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
 		peers:  &sync.Map{},
-		notify: make(chan *multiplexer.Peer, 16),
+		notify: make(chan multiplexer.Peer, 16),
 		logger: logger,
 		num:    new(uint64),
 		self:   self,
@@ -52,7 +53,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
 		return ErrSessionAlreadyEstablished
 	}
 
-	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
+	p, err := peer.NewYamuxPeer(peer.YamuxConfig{
 		Logger:    s.logger,
 		Conn:      conf.Conn,
 		Initiator: conf.Initiator,
@@ -91,7 +92,7 @@ func (s *PeerMap) Ring() uint64 {
 	return ring
 }
 
-func (s *PeerMap) Notify() <-chan *multiplexer.Peer {
+func (s *PeerMap) Notify() <-chan multiplexer.Peer {
 	return s.notify
 }
 
@@ -121,10 +122,10 @@ func (s *PeerMap) Has(peer uint64) bool {
 	return ok
 }
 
-func (s *PeerMap) Get(peer uint64) *multiplexer.Peer {
+func (s *PeerMap) Get(peer uint64) multiplexer.Peer {
 	p, ok := s.peers.Load(peer)
 	if ok {
-		return p.(*multiplexer.Peer)
+		return p.(multiplexer.Peer)
 	}
 	return nil
 }
@@ -135,6 +136,6 @@ func (s *PeerMap) Remove(peer uint64) error {
 	if !ok {
 		return nil
 	}
-	p := pp.(*multiplexer.Peer)
+	p := pp.(multiplexer.Peer)
 	return p.Bye()
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 
 	"go.uber.org/zap"
@@ -32,7 +33,7 @@ const (
 )
 
 var (
-	peer    = flag.String("peer", "127.0.0.1:11111", "specify the peering target")
+	target  = flag.String("peer", "127.0.0.1:11111", "specify the peering target")
 	where   = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
 	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
 	debug   = flag.Bool("debug", false, "verbose logging and disable TLS verification")
@@ -61,7 +62,7 @@ func main() {
 		logger.Fatal("only http/https schema is supported", zap.String("schema", u.Scheme))
 	}
 
-	peerTarget := *peer
+	peerTarget := *target
 	if *where != defaultWhere {
 		client := &http.Client{
 			Transport: &http.Transport{
@@ -97,14 +98,14 @@ func main() {
 		return
 	}
 
-	pair := multiplexer.Pair{}
+	pair := multiplexer.Link{}
 	buf := pair.Pack()
 	n, err := connector.Write(buf)
 	if err != nil {
 		logger.Error("writing handshake to peer", zap.Error(err))
 		return
 	}
-	if n != multiplexer.PairSize {
+	if n != multiplexer.LinkSize {
 		logger.Error("invalid handshake length sent", zap.Int("length", n))
 		return
 	}
@@ -114,7 +115,7 @@ func main() {
 		logger.Error("reading handshake from peer", zap.Error(err))
 		return
 	}
-	if n != multiplexer.PairSize {
+	if n != multiplexer.LinkSize {
 		logger.Error("invalid handshake length received", zap.Int("length", n))
 		return
 	}
@@ -127,7 +128,7 @@ func main() {
 		return
 	}
 
-	p, err := multiplexer.NewPeer(multiplexer.PeerConfig{
+	p, err := peer.NewYamuxPeer(peer.YamuxConfig{
 		Logger:    logger.With(zap.Uint64("PeerID", pair.Destination), zap.Bool("Initiator", true)),
 		Conn:      connector,
 		Initiator: true,

@@ -112,7 +112,7 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	c, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh, err := g.Multiplexer.Forward(c, conn, multiplexer.Pair{
+	errCh, err := g.Multiplexer.Forward(c, conn, multiplexer.Link{
 		Source:      g.Multiplexer.PeerID(),
 		Destination: clientID,
 	})

@@ -26,9 +26,9 @@ func (s *Server) peerHandshake(conn net.Conn) {
 		conn.Close()
 	}()
 
-	var pair multiplexer.Pair
+	var link multiplexer.Link
 	var read int
-	r := make([]byte, multiplexer.PairSize)
+	r := make([]byte, multiplexer.LinkSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
@@ -37,20 +37,20 @@ func (s *Server) peerHandshake(conn net.Conn) {
 		err = errors.Wrap(err, "reading handshake")
 		return
 	}
-	if read != multiplexer.PairSize {
+	if read != multiplexer.LinkSize {
 		err = errors.Errorf("invalid handshake length received from peer: %d", read)
 	}
-	pair.Unpack(r)
+	link.Unpack(r)
 
-	logger = logger.With(zap.Uint64("peerID", pair.Source))
+	logger = logger.With(zap.Uint64("peerID", link.Source))
 
-	logger.Debug("incoming handshake with peer", zap.Any("peer", pair))
+	logger.Debug("incoming handshake with peer", zap.Uint64("peer", link.Source))
 
-	if (pair.Source == 0 || pair.Destination == 0) ||
-		(pair.Source == pair.Destination) ||
-		(pair.Destination != s.PeerID()) ||
-		pair.Source == s.PeerID() {
-		err = errors.Errorf("invalid peer handshake %+v", pair)
+	if (link.Source == 0 || link.Destination == 0) ||
+		(link.Source == link.Destination) ||
+		(link.Destination != s.PeerID()) ||
+		link.Source == s.PeerID() {
+		err = errors.Errorf("invalid peer handshake %+v", link)
 		return
 	}
 
@@ -59,7 +59,7 @@ func (s *Server) peerHandshake(conn net.Conn) {
 
 	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
 		Conn:      conn,
-		Peer:      pair.Source,
+		Peer:      link.Source,
 		Initiator: false,
 		Wait:      time.Second,
 	})
@@ -73,18 +73,18 @@ func (s *Server) handlePeerEvents() {
 		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peerID", peer.Peer()))
 		// update our peer graph in a different goroutine with closure
 		// as this may block
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
 		}(peer)
 		// listen for request for forwarding from peers
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			for c := range p.Handle() {
-				if c.Pair == multiplexer.MessagingPair {
+				if c.Link == multiplexer.MessagingLink {
 					go s.openMessaging(c.Conn, p.Peer())
 					continue
 				}
-				if _, err := s.Forward(s.parentCtx, c.Conn, c.Pair); err != nil {
-					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("pair", c.Pair))
+				if _, err := s.Forward(s.parentCtx, c.Conn, c.Link); err != nil {
+					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("link", c.Link))
 				}
 			}
 			s.logger.Debug("exiting peer streams handler", zap.Uint64("peerID", p.Peer()))
@@ -94,7 +94,7 @@ func (s *Server) handlePeerEvents() {
 
 		// open a messaging stream
 		// but only one side of the session can
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			if p.Initiator() {
 				return
 			}
@@ -107,7 +107,7 @@ func (s *Server) handlePeerEvents() {
 		}(peer)
 
 		// remove peer if they disconnected before gossip found out
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			<-p.NotifyClose()
 			s.logger.Debug("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
 			s.peers.Remove(p.Peer())

@@ -213,11 +213,11 @@ func (s *Server) connectPeer(m Meta) {
 
 	logger.Debug("initiating handshake with peer")
 
-	pair := multiplexer.Pair{
+	link := multiplexer.Link{
 		Source:      s.PeerID(),
 		Destination: m.PeerID,
 	}
-	buf := pair.Pack()
+	buf := link.Pack()
 	conn.Write(buf)
 
 	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{

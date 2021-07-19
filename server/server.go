@@ -170,28 +170,28 @@ func (s *Server) Meta() []byte {
 	return s.meta.Pack()
 }
 
-func (s *Server) findPath(pair multiplexer.Pair) *multiplexer.Peer {
+func (s *Server) findPath(link multiplexer.Link) multiplexer.Peer {
 	// does the destination exist in our peer graph?
-	if !s.peerGraph.HasPeer(pair.Destination) {
+	if !s.peerGraph.HasPeer(link.Destination) {
 		return nil
 	}
 	// is the client connected locally?
-	if p := s.clients.Get(pair.Destination); p != nil {
+	if p := s.clients.Get(link.Destination); p != nil {
 		return p
 	}
 	// TODO(zllovesuki): this allows for future rtt lookup for multi-peer client
 	// get a random peer from the graph, if any
-	peers := s.peerGraph.GetEdges(pair.Destination)
+	peers := s.peerGraph.GetEdges(link.Destination)
 	if len(peers) == 0 {
 		return nil
 	}
 	return s.peers.Get(peers[rand.Intn(len(peers))])
 }
 
-func (s *Server) Forward(ctx context.Context, conn net.Conn, pair multiplexer.Pair) (<-chan error, error) {
-	p := s.findPath(pair)
+func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Link) (<-chan error, error) {
+	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(ErrDestinationNotFound, "peer %d not found in peer graph", pair.Destination)
+		return nil, errors.Wrapf(ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
-	return p.Bidirectional(ctx, conn, pair)
+	return p.Bidirectional(ctx, conn, link)
 }

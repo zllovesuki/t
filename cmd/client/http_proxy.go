@@ -9,7 +9,7 @@ import (
 )
 
 type MultiplexerAccepter struct {
-	Peer *multiplexer.Peer
+	Peer multiplexer.Peer
 }
 
 var _ net.Listener = &MultiplexerAccepter{}

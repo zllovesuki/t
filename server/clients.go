@@ -25,9 +25,9 @@ func (s *Server) clientHandshake(conn net.Conn) {
 		conn.Close()
 	}()
 
-	var pair multiplexer.Pair
+	var link multiplexer.Link
 	var length int
-	r := make([]byte, multiplexer.PairSize)
+	r := make([]byte, multiplexer.LinkSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 3))
@@ -36,32 +36,32 @@ func (s *Server) clientHandshake(conn net.Conn) {
 		err = errors.Wrap(err, "reading handshake")
 		return
 	}
-	if length != multiplexer.PairSize {
+	if length != multiplexer.LinkSize {
 		err = errors.Errorf("invalid handshake length received from client: %d", length)
 		return
 	}
-	pair.Unpack(r)
+	link.Unpack(r)
 
 	logger = logger.With(zap.Any("remoteAddr", conn.RemoteAddr()))
 
-	logger.Debug("incoming handshake with client", zap.Any("pair", pair))
+	logger.Debug("incoming handshake with client", zap.Any("link", link))
 
-	if pair.Source != 0 || pair.Destination != 0 {
-		err = errors.Errorf("invalid client handshake %+v", pair)
+	if link.Source != 0 || link.Destination != 0 {
+		err = errors.Errorf("invalid client handshake %+v", link)
 		return
 	}
 
 	name := shared.RandomHostname()
-	pair.Source = shared.PeerHash(name)
-	pair.Destination = s.PeerID()
-	w := pair.Pack()
+	link.Source = shared.PeerHash(name)
+	link.Destination = s.PeerID()
+	w := link.Pack()
 
 	length, err = conn.Write(w)
 	if err != nil {
 		err = errors.Wrap(err, "replying handshake")
 		return
 	}
-	if length != multiplexer.PairSize {
+	if length != multiplexer.LinkSize {
 		err = errors.Errorf("invalid handshake length sent to client: %d", length)
 		return
 	}
@@ -78,7 +78,7 @@ func (s *Server) clientHandshake(conn net.Conn) {
 
 	err = s.clients.NewPeer(s.parentCtx, state.PeerConfig{
 		Conn:      conn,
-		Peer:      pair.Source,
+		Peer:      link.Source,
 		Initiator: false,
 		Wait:      time.Second,
 	})
@@ -92,12 +92,12 @@ func (s *Server) handleClientEvents() {
 		s.logger.Info("client destination registered", zap.Uint64("peerID", peer.Peer()), zap.String("remote", peer.Addr().String()))
 		// update our peer graph with the client as this may block with
 		// many clients connecting
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
 		}(peer)
 		// remove the client once they are disconnected. relying on notify
 		// as clients do not partipate in gossips
-		go func(p *multiplexer.Peer) {
+		go func(p multiplexer.Peer) {
 			<-p.NotifyClose()
 			s.logger.Debug("removing disconnected client", zap.Uint64("peerID", p.Peer()))
 			s.clients.Remove(p.Peer())
