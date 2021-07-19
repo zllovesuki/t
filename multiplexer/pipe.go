@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/zllovesuki/t/util"
 
@@ -24,21 +23,6 @@ var copyBufPool = sync.Pool{
 	},
 }
 
-type IdleTimeoutConn struct {
-	net.Conn
-	ReadTimeout time.Duration
-}
-
-var _ net.Conn = &IdleTimeoutConn{}
-
-func (i *IdleTimeoutConn) Read(b []byte) (int, error) {
-	err := i.Conn.SetReadDeadline(time.Now().Add(i.ReadTimeout))
-	if err != nil {
-		return 0, err
-	}
-	return i.Conn.Read(b)
-}
-
 func IsTimeout(err error) bool {
 	t := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, yamux.ErrTimeout)
 	if t {
@@ -54,13 +38,8 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
-	tSrc := &IdleTimeoutConn{
-		Conn:        src,
-		ReadTimeout: time.Second * 60,
-	}
-
 	wg.Add(2)
-	go pipe(ctx, &wg, err, dst, tSrc)
+	go pipe(ctx, &wg, err, dst, src)
 	go pipe(ctx, &wg, err, src, dst)
 	go func() {
 		wg.Wait()
