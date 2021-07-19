@@ -89,9 +89,6 @@ func main() {
 	certManager.LoadAccountFromFile()
 	certManager.LoadBundleFromFile()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
@@ -156,6 +153,9 @@ func main() {
 	}
 	defer gatewayListener.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	domain := bundle.Web.Domain
 	if *webPort != 443 {
 		domain = fmt.Sprintf("%s:%d", domain, *webPort)
@@ -205,5 +205,6 @@ func main() {
 		zap.Uint64("PeerID", s.PeerID()),
 	)
 
-	<-sigs
+	sig := <-sigs
+	logger.Info("terminating on signal", zap.String("signal", sig.String()))
 }
