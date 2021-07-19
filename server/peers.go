@@ -109,7 +109,7 @@ func (s *Server) handlePeerEvents() {
 		// remove peer if they disconnected before gossip found out
 		go func(p multiplexer.Peer) {
 			<-p.NotifyClose()
-			s.logger.Debug("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
+			s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
 			s.peers.Remove(p.Peer())
 			s.peerGraph.RemovePeer(p.Peer())
 			s.membershipCh <- struct{}{}
