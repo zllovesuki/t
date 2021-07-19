@@ -18,6 +18,10 @@ See `example.config.yaml` for reference. You will need to generate your own CA a
 
 The peers have to be publicly accessible on the Internet (they are the gateway, after all).
 
+# Architecture
+
+![t architecture](assets/t_architecture.png)
+
 # How to Use
 
 1. First you need a publicly accessible host. You can run one for $5 a month or cheaper from your favorite cloud/vps providers;
