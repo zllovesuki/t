@@ -20,6 +20,7 @@ import (
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
+	_ "github.com/zllovesuki/t/workaround"
 
 	"go.uber.org/zap"
 )
