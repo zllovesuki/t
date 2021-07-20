@@ -28,8 +28,10 @@ type Peer interface {
 	Ping() (time.Duration, error)
 	// Messaging opens a dedicated bidirectional stream to handle in-band control messages
 	Messaging() (net.Conn, error)
-	// Bidirectional establishs a virtual link between the Source and Destination
+	// Bidirectional establishs a virtual link between the Source and Destination via this Peer
 	Bidirectional(context.Context, net.Conn, Link) (<-chan error, error)
+	// Direct requests a direct link to destination without automatic bidirectional handling
+	Direct(context.Context, Link) (net.Conn, error)
 	// Handle returns a receving channel where Bidirectional request is made from a connected peer
 	Handle() <-chan LinkConnection
 	// NotifyClose returns a notifying channel, unblocks when the Peer disconnects

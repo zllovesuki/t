@@ -191,7 +191,15 @@ func (s *Server) findPath(link multiplexer.Link) multiplexer.Peer {
 func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Link) (<-chan error, error) {
 	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
 	return p.Bidirectional(ctx, conn, link)
+}
+
+func (s *Server) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
+	p := s.findPath(link)
+	if p == nil {
+		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+	}
+	return p.Direct(ctx, link)
 }

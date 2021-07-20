@@ -85,6 +85,7 @@ func (s *Server) handlePeerEvents() {
 				}
 				if _, err := s.Forward(s.parentCtx, c.Conn, c.Link); err != nil {
 					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Any("link", c.Link))
+					c.Conn.Close()
 				}
 			}
 			s.logger.Debug("exiting peer streams handler", zap.Uint64("peerID", p.Peer()))

@@ -145,8 +145,8 @@ func (p *Yamux) Messaging() (net.Conn, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "opening new messaging stream")
 	}
-	pair := multiplexer.MessagingLink
-	buf := pair.Pack()
+	link := multiplexer.MessagingLink
+	buf := link.Pack()
 	written, err := n.Write(buf)
 	if err != nil {
 		return nil, errors.Wrap(err, "writing messaging stream handshake")
@@ -157,19 +157,33 @@ func (p *Yamux) Messaging() (net.Conn, error) {
 	return n, nil
 }
 
-func (p *Yamux) Bidirectional(ctx context.Context, conn net.Conn, pair multiplexer.Link) (<-chan error, error) {
+func (p *Yamux) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	n, err := p.session.Open()
 	if err != nil {
 		return nil, errors.Wrap(err, "opening new stream")
 	}
 
-	buf := pair.Pack()
+	buf := link.Pack()
 	written, err := n.Write(buf)
 	if err != nil {
 		return nil, errors.Wrap(err, "writing stream handshake")
 	}
 	if written != multiplexer.LinkSize {
 		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
+	}
+
+	go func() {
+		<-ctx.Done()
+		n.Close()
+	}()
+
+	return n, nil
+}
+
+func (p *Yamux) Bidirectional(ctx context.Context, conn net.Conn, link multiplexer.Link) (<-chan error, error) {
+	n, err := p.Direct(ctx, link)
+	if err != nil {
+		return nil, err
 	}
 
 	errCh := multiplexer.Connect(ctx, n, conn)
