@@ -168,7 +168,7 @@ func main() {
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, e error) {
 		logger.Error("forward http/https request", zap.Error(e))
 		rw.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(rw, "Destination returned error: %s", e.Error())
+		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
 	go func() {
 		accepter := &MultiplexerAccepter{
