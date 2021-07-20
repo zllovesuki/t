@@ -21,7 +21,7 @@ func (g *Gateway) tunnelHandler() http.Handler {
 	return &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
-			req.URL.Host = req.Host
+			req.URL.Host = req.TLS.ServerName
 		},
 		Transport: &http.Transport{
 			DialContext: func(c context.Context, network, addr string) (net.Conn, error) {
