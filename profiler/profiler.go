@@ -13,7 +13,7 @@ func StartProfiler(addr string) {
 	r := prometheus.NewRegistry()
 	r.MustRegister(GatewayRequests)
 
-	m.Handle("/debug", debug())
+	m.Handle("/", debug())
 	m.Handle("/metrics", promhttp.HandlerFor(r, promhttp.HandlerOpts{}))
 
 	http.ListenAndServe(addr, m)
