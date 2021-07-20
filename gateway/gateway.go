@@ -9,6 +9,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/server"
 
 	"github.com/pkg/errors"
@@ -86,9 +87,12 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	if err != nil {
 		g.Logger.Error("tls handshake failed", zap.Error(err), zap.String("remoteAddr", conn.RemoteAddr().String()))
 		conn.Close()
+		profiler.GatewayRequests.WithLabelValues("error", "handshake").Add(1)
 		return
 	}
 	conn.SetDeadline(time.Time{})
+
+	profiler.GatewayRequests.WithLabelValues("success", "handshake").Add(1)
 
 	cs := conn.ConnectionState()
 	switch cs.ServerName {

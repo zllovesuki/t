@@ -15,6 +15,7 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
+	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/server"
 
@@ -28,6 +29,7 @@ const (
 )
 
 var (
+	profile     = flag.String("profiler", "127.0.0.1:9090", "where the profiler should listen for connections")
 	disableAcme = flag.Bool("disableACME", false, "disable acme functions and use bundle.json as it")
 	configPath  = flag.String("config", "config.yaml", "path to the config.yaml")
 	peerPort    = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
@@ -196,8 +198,8 @@ func main() {
 	s.ListenForClients()
 
 	go gateway.RedirectHTTP(logger, bundle.Network.BindAddr, *webPort)
-
 	go g.Start(ctx)
+	go profiler.StartProfiler(*profile)
 
 	logger.Info("peer info",
 		zap.String("bindAddr", peerAddr),

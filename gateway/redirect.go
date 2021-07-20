@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/zllovesuki/t/profiler"
+
 	"go.uber.org/zap"
 )
 
@@ -16,6 +18,7 @@ func httpRedirecter(w http.ResponseWriter, r *http.Request) {
 		RawQuery: r.URL.RawQuery,
 	}
 	http.Redirect(w, r, re.String(), http.StatusPermanentRedirect)
+	profiler.GatewayRequests.WithLabelValues("success", "redirect").Add(1)
 }
 
 func RedirectHTTP(logger *zap.Logger, bindAddr string, webPort int) {

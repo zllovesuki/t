@@ -11,6 +11,7 @@ require (
 	github.com/hashicorp/yamux v0.0.0-20210707203944-259a57b3608c
 	github.com/miekg/dns v1.1.43
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.11.0
 	github.com/sethvargo/go-diceware v0.2.1
 	go.uber.org/atomic v1.8.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
