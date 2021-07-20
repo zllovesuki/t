@@ -50,6 +50,10 @@ jobs:
         run: |
           CGO_ENABLED=0 GOARCH=amd64 GOOS=illumos go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-client-illumos-amd64 ./cmd/client
           CGO_ENABLED=0 GOARCH=amd64 GOOS=illumos go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-server-illumos-amd64 ./cmd/server
+      - name: Build android/arm64 Client w/ DNS Fix
+        run: |
+          CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang CXX=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang++ CGO_ENABLED=1 GOARCH=arm64 GOOS=android go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/t-client-android-arm64 ./cmd/client
+
 
       - name: Release Binaries
         if: startsWith(github.ref, 'refs/tags/')
