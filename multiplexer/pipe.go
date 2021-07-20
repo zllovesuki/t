@@ -8,7 +8,7 @@ import (
 
 	"github.com/zllovesuki/t/util"
 
-	"github.com/hashicorp/yamux"
+	"github.com/libp2p/go-yamux/v2"
 	"github.com/pkg/errors"
 )
 

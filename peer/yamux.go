@@ -4,12 +4,13 @@ import (
 	"context"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
 
-	"github.com/hashicorp/yamux"
+	"github.com/libp2p/go-yamux/v2"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -45,23 +46,48 @@ func (p *YamuxConfig) validate() error {
 	return nil
 }
 
+type zapWriter struct {
+	logger *zap.Logger
+}
+
+func (z *zapWriter) Write(b []byte) (int, error) {
+	msg := string(b)
+	switch {
+	case strings.Contains(msg, "frame for missing stream"):
+	case strings.HasPrefix(msg, "[WARN]"):
+		z.logger.Warn(msg)
+	default:
+		z.logger.Error(msg)
+	}
+	return len(b), nil
+}
+
 func NewYamuxPeer(config YamuxConfig) (*Yamux, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
 	var session *yamux.Session
 	var err error
+
+	cfg := yamux.DefaultConfig()
+	cfg.WriteCoalesceDelay = 50 * time.Millisecond
+	cfg.AcceptBacklog = 1024
+	cfg.ReadBufSize = 0
+
+	logger := config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator))
+	cfg.LogOutput = &zapWriter{logger: logger}
+
 	if config.Initiator {
-		session, err = yamux.Client(config.Conn, nil)
+		session, err = yamux.Client(config.Conn, cfg)
 	} else {
-		session, err = yamux.Server(config.Conn, nil)
+		session, err = yamux.Server(config.Conn, cfg)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
 	}
 
 	return &Yamux{
-		logger:   config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator)),
+		logger:   logger,
 		session:  session,
 		config:   config,
 		incoming: make(chan multiplexer.LinkConnection, 32),
@@ -140,8 +166,8 @@ func (p *Yamux) Ping() (time.Duration, error) {
 	return p.session.Ping()
 }
 
-func (p *Yamux) Messaging() (net.Conn, error) {
-	n, err := p.session.Open()
+func (p *Yamux) Messaging(ctx context.Context) (net.Conn, error) {
+	n, err := p.session.Open(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening new messaging stream")
 	}
@@ -158,7 +184,7 @@ func (p *Yamux) Messaging() (net.Conn, error) {
 }
 
 func (p *Yamux) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
-	n, err := p.session.Open()
+	n, err := p.session.Open(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening new stream")
 	}

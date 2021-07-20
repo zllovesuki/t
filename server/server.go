@@ -133,6 +133,15 @@ func New(conf Config) (*Server, error) {
 
 func (s *Server) ListenForPeers() {
 	go func() {
+		if !s.config.Debug {
+			return
+		}
+		for {
+			time.Sleep(time.Second * 15)
+			s.messaging.Announce(messaging.MessageTest, []byte{1, 2, 3, 4})
+		}
+	}()
+	go func() {
 		for {
 			conn, err := s.peerListner.Accept()
 			if err != nil {

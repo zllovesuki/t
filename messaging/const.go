@@ -18,6 +18,7 @@ const (
 	MessageUnknown MessageType = iota
 	MessageACMEAccountKey
 	MessageClientCerts
+	MessageTest
 
 	messageRequestReply
 )

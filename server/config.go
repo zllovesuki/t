@@ -37,7 +37,7 @@ type Config struct {
 	Multiplexer    MultiplexerConfig
 	Gossip         GossipConfig
 	CertManager    *acme.CertManager
-	DisableACME    bool
+	Debug          bool
 	Domain         string
 }
 

@@ -61,7 +61,7 @@ func (s *Server) leaderTimer() {
 				continue
 			}
 			go func() {
-				if !s.config.DisableACME {
+				if !s.config.Debug {
 					s.logger.Debug("running acme check as leader")
 					s.checkACMEAccountKeys()
 					s.checkACMECerts()

@@ -29,14 +29,13 @@ const (
 )
 
 var (
-	profile     = flag.String("profiler", "127.0.0.1:9090", "where the profiler should listen for connections")
-	disableAcme = flag.Bool("disableACME", false, "disable acme functions and use bundle.json as it")
-	configPath  = flag.String("config", "config.yaml", "path to the config.yaml")
-	peerPort    = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
-	gossipPort  = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
-	clientPort  = flag.Int("clientPort", defaultClientPort, "override config clientPort")
-	webPort     = flag.Int("webPort", 443, "gateway port for forwarding to clients")
-	debug       = flag.Bool("debug", false, "verbose logging")
+	profile    = flag.String("profiler", "127.0.0.1:9090", "where the profiler should listen for connections")
+	configPath = flag.String("config", "config.yaml", "path to the config.yaml")
+	peerPort   = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
+	gossipPort = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
+	clientPort = flag.Int("clientPort", defaultClientPort, "override config clientPort")
+	webPort    = flag.Int("webPort", 443, "gateway port for forwarding to clients")
+	debug      = flag.Bool("debug", false, "enable verbose logging and disable ACME functions")
 )
 
 func main() {
@@ -85,7 +84,7 @@ func main() {
 		logger.Fatal("setting up cert manager", zap.Error(err))
 	}
 
-	if *disableAcme {
+	if *debug {
 		logger.Warn("ACME is disabled: no cert checking nor issuance.")
 	}
 	certManager.LoadAccountFromFile()
@@ -172,7 +171,7 @@ func main() {
 		Multiplexer:    bundle.Multiplexer,
 		Gossip:         bundle.Gossip,
 		CertManager:    certManager,
-		DisableACME:    *disableAcme,
+		Debug:          *debug,
 		Domain:         domain,
 	})
 	if err != nil {

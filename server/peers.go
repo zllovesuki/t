@@ -99,7 +99,7 @@ func (s *Server) handlePeerEvents() {
 			if p.Initiator() {
 				return
 			}
-			c, err := p.Messaging()
+			c, err := p.Messaging(s.parentCtx)
 			if err != nil {
 				s.logger.Error("opening messaging stream", zap.Error(err), zap.Uint64("Peer", p.Peer()))
 				return

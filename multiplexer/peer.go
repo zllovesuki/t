@@ -27,7 +27,7 @@ type Peer interface {
 	// Ping is useful for checking latency and health
 	Ping() (time.Duration, error)
 	// Messaging opens a dedicated bidirectional stream to handle in-band control messages
-	Messaging() (net.Conn, error)
+	Messaging(context.Context) (net.Conn, error)
 	// Bidirectional establishs a virtual link between the Source and Destination via this Peer
 	Bidirectional(context.Context, net.Conn, Link) (<-chan error, error)
 	// Direct requests a direct link to destination without automatic bidirectional handling
