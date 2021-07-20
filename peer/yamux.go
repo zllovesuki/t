@@ -54,7 +54,8 @@ func (z *zapWriter) Write(b []byte) (int, error) {
 	msg := string(b)
 	switch {
 	case strings.Contains(msg, "frame for missing stream"):
-	case strings.HasPrefix(msg, "[WARN]"):
+	case strings.Contains(msg, "iscard"): // the omission of D is intentional
+	case strings.Contains(msg, "[WARN]"):
 		z.logger.Warn(msg)
 	default:
 		z.logger.Error(msg)
@@ -70,7 +71,6 @@ func NewYamuxPeer(config YamuxConfig) (*Yamux, error) {
 	var err error
 
 	cfg := yamux.DefaultConfig()
-	cfg.WriteCoalesceDelay = 50 * time.Millisecond
 	cfg.AcceptBacklog = 1024
 	cfg.ReadBufSize = 0
 

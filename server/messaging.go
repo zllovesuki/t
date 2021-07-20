@@ -41,7 +41,7 @@ func (s *Server) handlePeerMessaging(ch <-chan messaging.Message, peer uint64) {
 					s.logger.Error("importing acme bundle from announcement", zap.Error(err))
 				}
 			case messaging.MessageTest:
-				s.logger.Debug("messaing test", zap.Binary("data", m.Data), zap.Uint64("from", m.From))
+				s.logger.Debug("incoming messaging test", zap.Binary("data", m.Data), zap.Uint64("from", m.From))
 			}
 		}
 	}
