@@ -22,6 +22,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var Version = "dev"
+
 const (
 	defaultPeerPort   = 1111
 	defaultGossipPort = 12345
@@ -204,6 +206,7 @@ func main() {
 		zap.String("bindAddr", peerAddr),
 		zap.String("advertiseAddr", fmt.Sprintf("%s:%d", bundle.Network.AdvertiseAddr, bundle.Multiplexer.Peer)),
 		zap.Uint64("PeerID", s.PeerID()),
+		zap.String("serverVersion", Version),
 	)
 
 	sig := <-sigs

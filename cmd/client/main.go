@@ -25,6 +25,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var Version = "dev"
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
@@ -102,7 +104,7 @@ func main() {
 
 	proposedProtocol := multiplexer.Protocol(*protocol)
 
-	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()))
+	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
 
 	link := multiplexer.Link{
 		Protocol: proposedProtocol,
