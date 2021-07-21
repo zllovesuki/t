@@ -187,10 +187,11 @@ func main() {
 		}
 		http.Serve(accepter, proxy)
 	}()
+	go func() {
+		<-p.NotifyClose()
+		pm.Remove(p.Peer())
+	}()
 
 	<-sigs
 
-	if err := p.Bye(); err != nil {
-		logger.Error("cannot close connection with peer", zap.Error(err))
-	}
 }
