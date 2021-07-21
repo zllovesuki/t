@@ -118,7 +118,7 @@ func New(conf Config) (*Server, error) {
 	c.BindAddr = conf.Network.BindAddr
 	c.BindPort = conf.Gossip.Port
 	c.Keyring = keyring
-	c.EnableCompression = true
+	c.EnableCompression = false
 	c.GossipVerifyIncoming = true
 	c.GossipVerifyOutgoing = true
 	c.PushPullInterval = time.Second * 30 // faster convergence
