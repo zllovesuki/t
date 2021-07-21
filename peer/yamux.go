@@ -198,11 +198,6 @@ func (p *Yamux) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, er
 		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
 	}
 
-	go func() {
-		<-ctx.Done()
-		n.Close()
-	}()
-
 	return n, nil
 }
 
