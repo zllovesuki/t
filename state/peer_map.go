@@ -3,13 +3,11 @@ package state
 import (
 	"context"
 	"fmt"
-	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/peer"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -41,24 +39,17 @@ func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	}
 }
 
-type PeerConfig struct {
-	Conn      net.Conn
-	Peer      uint64
-	Initiator bool
-	Wait      time.Duration
-}
-
-func (s *PeerMap) NewPeer(ctx context.Context, conf PeerConfig) error {
+func (s *PeerMap) NewPeer(ctx context.Context, protocol multiplexer.Protocol, conf multiplexer.Config) error {
 	if _, ok := s.peers.Load(conf.Peer); ok {
 		return ErrSessionAlreadyEstablished
 	}
 
-	p, err := peer.NewYamuxPeer(peer.YamuxConfig{
-		Logger:    s.logger,
-		Conn:      conf.Conn,
-		Initiator: conf.Initiator,
-		Peer:      conf.Peer,
-	})
+	c, err := multiplexer.Get(protocol)
+	if err != nil {
+		return err
+	}
+
+	p, err := c(conf)
 	if err != nil {
 		return err
 	}

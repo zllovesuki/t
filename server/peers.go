@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/server/state"
+	"github.com/zllovesuki/t/state"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -57,7 +57,8 @@ func (s *Server) peerHandshake(conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
+	err = s.peers.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+		Logger:    logger,
 		Conn:      conn,
 		Peer:      link.Source,
 		Initiator: false,

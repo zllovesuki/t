@@ -12,7 +12,7 @@ import (
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/messaging"
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/server/state"
+	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"

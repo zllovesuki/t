@@ -9,7 +9,7 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/server/state"
+	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
@@ -220,7 +220,8 @@ func (s *Server) connectPeer(m Meta) {
 	buf := link.Pack()
 	conn.Write(buf)
 
-	err = s.peers.NewPeer(s.parentCtx, state.PeerConfig{
+	err = s.peers.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+		Logger:    logger,
 		Conn:      conn,
 		Peer:      m.PeerID,
 		Initiator: true,

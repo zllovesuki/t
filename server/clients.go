@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/server/state"
 	"github.com/zllovesuki/t/shared"
 
 	"github.com/pkg/errors"
@@ -76,7 +75,8 @@ func (s *Server) clientHandshake(conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.clients.NewPeer(s.parentCtx, state.PeerConfig{
+	err = s.clients.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+		Logger:    logger,
 		Conn:      conn,
 		Peer:      link.Source,
 		Initiator: false,

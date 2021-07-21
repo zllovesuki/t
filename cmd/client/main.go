@@ -18,8 +18,9 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/peer"
+	_ "github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
+	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
 
 	"go.uber.org/zap"
@@ -129,24 +130,25 @@ func main() {
 		return
 	}
 
-	p, err := peer.NewYamuxPeer(peer.YamuxConfig{
+	pm := state.NewPeerMap(logger, pair.Source)
+
+	err = pm.NewPeer(ctx, multiplexer.MplexProtocol, multiplexer.Config{
 		Logger:    logger.With(zap.Uint64("PeerID", pair.Destination), zap.Bool("Initiator", true)),
 		Conn:      connector,
 		Initiator: true,
 		Peer:      pair.Destination,
 	})
 	if err != nil {
-		logger.Error("handshaking with peer", zap.Error(err))
-		return
+		logger.Fatal("registering peer", zap.Error(err))
 	}
 
-	rtt, err := p.Ping()
-	if err != nil {
-		logger.Error("checking for peer rtt", zap.Error(err))
-		return
+	var p multiplexer.Peer
+	select {
+	case p = <-pm.Notify():
+		logger.Info("Peering established", zap.Any("pair", pair))
+	case <-time.After(time.Second * 3):
+		logger.Fatal("timeout attempting to establish connection with peer")
 	}
-
-	logger.Info("Peering established", zap.Any("pair", pair), zap.Duration("rtt", rtt))
 
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 	fmt.Printf("Your Hostname: %+v\n\n", g.Hostname)

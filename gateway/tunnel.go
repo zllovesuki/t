@@ -56,6 +56,10 @@ func (g *Gateway) errorHandler(rw http.ResponseWriter, r *http.Request, e error)
 		profiler.GatewayRequests.WithLabelValues("timeout", "forward").Add(1)
 		return
 	}
+	if errors.Is(e, context.Canceled) {
+		// this is expected
+		return
+	}
 	g.Logger.Error("forwarding http/https request", zap.Error(e))
 	rw.WriteHeader(http.StatusServiceUnavailable)
 	fmt.Fprint(rw, "An unexpected error has occurred while attempting to forward to destination.")
