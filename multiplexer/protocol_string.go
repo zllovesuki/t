@@ -8,13 +8,14 @@ func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
-	_ = x[YamuxProtocol-0]
-	_ = x[MplexProtocol-1]
+	_ = x[UnknownProtocol-0]
+	_ = x[YamuxProtocol-1]
+	_ = x[MplexProtocol-2]
 }
 
-const _Protocol_name = "YamuxProtocolMplexProtocol"
+const _Protocol_name = "UnknownProtocolYamuxProtocolMplexProtocol"
 
-var _Protocol_index = [...]uint8{0, 13, 26}
+var _Protocol_index = [...]uint8{0, 15, 28, 41}
 
 func (i Protocol) String() string {
 	if i < 0 || i >= Protocol(len(_Protocol_index)-1) {

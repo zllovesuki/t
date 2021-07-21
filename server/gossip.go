@@ -97,6 +97,8 @@ func (s *Server) NotifyLeave(node *memberlist.Node) {
 	}
 
 	s.logger.Info("dead peer discovered via gossip", zap.Any("meta", m))
+
+	s.removePeer(m.PeerID)
 }
 
 func (s *Server) NotifyUpdate(node *memberlist.Node) {
@@ -216,11 +218,12 @@ func (s *Server) connectPeer(m Meta) {
 	link := multiplexer.Link{
 		Source:      s.PeerID(),
 		Destination: m.PeerID,
+		Protocol:    m.Protocol,
 	}
 	buf := link.Pack()
 	conn.Write(buf)
 
-	err = s.peers.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+	err = s.peers.NewPeer(s.parentCtx, m.Protocol, multiplexer.Config{
 		Logger:    logger,
 		Conn:      conn,
 		Peer:      m.PeerID,

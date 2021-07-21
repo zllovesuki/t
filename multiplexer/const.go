@@ -14,7 +14,8 @@ import (
 type Protocol int
 
 const (
-	YamuxProtocol Protocol = iota
+	UnknownProtocol Protocol = iota
+	YamuxProtocol
 	MplexProtocol
 )
 

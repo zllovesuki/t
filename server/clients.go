@@ -41,9 +41,15 @@ func (s *Server) clientHandshake(conn net.Conn) {
 	}
 	link.Unpack(r)
 
-	logger = logger.With(zap.Any("remoteAddr", conn.RemoteAddr()))
+	_, err = multiplexer.Get(link.Protocol)
+	if err != nil {
+		err = errors.Wrap(err, "negotiating protocol with client")
+		return
+	}
 
-	logger.Debug("incoming handshake with client", zap.Any("link", link))
+	logger = logger.With(zap.Any("remoteAddr", conn.RemoteAddr()), zap.Any("link", link))
+
+	logger.Debug("incoming handshake with client")
 
 	if link.Source != 0 || link.Destination != 0 {
 		err = errors.Errorf("invalid client handshake %+v", link)
@@ -75,7 +81,7 @@ func (s *Server) clientHandshake(conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.clients.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+	err = s.clients.NewPeer(s.parentCtx, link.Protocol, multiplexer.Config{
 		Logger:    logger,
 		Conn:      conn,
 		Peer:      link.Source,
@@ -98,10 +104,13 @@ func (s *Server) handleClientEvents() {
 		// remove the client once they are disconnected. relying on notify
 		// as clients do not partipate in gossips
 		go func(p multiplexer.Peer) {
-			<-p.NotifyClose()
-			s.logger.Debug("removing disconnected client", zap.Uint64("peerID", p.Peer()))
-			s.clients.Remove(p.Peer())
-			s.peerGraph.RemovePeer(p.Peer())
+			select {
+			case <-s.parentCtx.Done():
+			case <-p.NotifyClose():
+				s.logger.Debug("removing disconnected client", zap.Uint64("peerID", p.Peer()))
+				s.clients.Remove(p.Peer())
+				s.peerGraph.RemovePeer(p.Peer())
+			}
 		}(peer)
 		// do not handle forward request from client
 		go peer.Null(s.parentCtx)

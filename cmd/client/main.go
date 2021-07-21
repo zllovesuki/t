@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	_ "github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
@@ -35,10 +34,11 @@ const (
 )
 
 var (
-	target  = flag.String("peer", "127.0.0.1:11111", "specify the peering target")
-	where   = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
-	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
-	debug   = flag.Bool("debug", false, "verbose logging and disable TLS verification")
+	target   = flag.String("peer", "127.0.0.1:11111", "specify the peering target without using autodiscovery")
+	where    = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
+	forward  = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
+	debug    = flag.Bool("debug", false, "verbose logging and disable TLS verification")
+	protocol = flag.Int("protocol", int(multiplexer.MplexProtocol), "multiplexer protocol to be used (1: Yamux; 2: Mplex) - usually used in debugging")
 )
 
 func main() {
@@ -100,8 +100,14 @@ func main() {
 		return
 	}
 
-	pair := multiplexer.Link{}
-	buf := pair.Pack()
+	proposedProtocol := multiplexer.Protocol(*protocol)
+
+	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()))
+
+	link := multiplexer.Link{
+		Protocol: proposedProtocol,
+	}
+	buf := link.Pack()
 	n, err := connector.Write(buf)
 	if err != nil {
 		logger.Error("writing handshake to peer", zap.Error(err))
@@ -121,7 +127,7 @@ func main() {
 		logger.Error("invalid handshake length received", zap.Int("length", n))
 		return
 	}
-	pair.Unpack(buf)
+	link.Unpack(buf)
 
 	var g shared.GeneratedName
 	err = json.NewDecoder(connector).Decode(&g)
@@ -130,13 +136,13 @@ func main() {
 		return
 	}
 
-	pm := state.NewPeerMap(logger, pair.Source)
+	pm := state.NewPeerMap(logger, link.Source)
 
-	err = pm.NewPeer(ctx, multiplexer.MplexProtocol, multiplexer.Config{
-		Logger:    logger.With(zap.Uint64("PeerID", pair.Destination), zap.Bool("Initiator", true)),
+	err = pm.NewPeer(ctx, link.Protocol, multiplexer.Config{
+		Logger:    logger.With(zap.Uint64("PeerID", link.Destination), zap.Bool("Initiator", true)),
 		Conn:      connector,
 		Initiator: true,
-		Peer:      pair.Destination,
+		Peer:      link.Destination,
 	})
 	if err != nil {
 		logger.Fatal("registering peer", zap.Error(err))
@@ -145,7 +151,7 @@ func main() {
 	var p multiplexer.Peer
 	select {
 	case p = <-pm.Notify():
-		logger.Info("Peering established", zap.Any("pair", pair))
+		logger.Info("Peering established", zap.Any("link", link))
 	case <-time.After(time.Second * 3):
 		logger.Fatal("timeout attempting to establish connection with peer")
 	}

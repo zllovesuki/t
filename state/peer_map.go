@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	_ "github.com/zllovesuki/t/peer"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -59,13 +60,13 @@ func (s *PeerMap) NewPeer(ctx context.Context, protocol multiplexer.Protocol, co
 		return errors.Wrap(err, "cannot ping peer")
 	}
 
-	s.logger.Debug("RTT with Peer", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d))
-
 	select {
 	case <-p.NotifyClose():
 		return errors.New("peer closed after negotiation")
 	case <-time.After(conf.Wait):
 	}
+
+	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d), zap.String("protocol", protocol.String()))
 
 	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)

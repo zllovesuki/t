@@ -68,6 +68,7 @@ func New(conf Config) (*Server, error) {
 			ConnectIP:   conf.Network.AdvertiseAddr,
 			ConnectPort: uint64(peerPort),
 			PeerID:      self,
+			Protocol:    multiplexer.MplexProtocol, // peers connect to each other using Mplex by default
 		},
 		parentCtx:      conf.Context,
 		config:         conf,

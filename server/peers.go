@@ -42,9 +42,15 @@ func (s *Server) peerHandshake(conn net.Conn) {
 	}
 	link.Unpack(r)
 
-	logger = logger.With(zap.Uint64("peerID", link.Source))
+	_, err = multiplexer.Get(link.Protocol)
+	if err != nil {
+		err = errors.Wrap(err, "negotiating protocol with peer")
+		return
+	}
 
-	logger.Debug("incoming handshake with peer", zap.Uint64("peer", link.Source))
+	logger = logger.With(zap.Uint64("peerID", link.Source), zap.Any("link", link))
+
+	logger.Debug("incoming handshake with peer")
 
 	if (link.Source == 0 || link.Destination == 0) ||
 		(link.Source == link.Destination) ||
@@ -57,7 +63,7 @@ func (s *Server) peerHandshake(conn net.Conn) {
 	conn.SetReadDeadline(time.Time{})
 	conn.SetWriteDeadline(time.Time{})
 
-	err = s.peers.NewPeer(s.parentCtx, multiplexer.MplexProtocol, multiplexer.Config{
+	err = s.peers.NewPeer(s.parentCtx, link.Protocol, multiplexer.Config{
 		Logger:    logger,
 		Conn:      conn,
 		Peer:      link.Source,
@@ -110,11 +116,11 @@ func (s *Server) handlePeerEvents() {
 
 		// remove peer if they disconnected before gossip found out
 		go func(p multiplexer.Peer) {
-			<-p.NotifyClose()
-			s.logger.Info("removing disconnected peer", zap.Uint64("peerID", p.Peer()))
-			s.peers.Remove(p.Peer())
-			s.peerGraph.RemovePeer(p.Peer())
-			s.membershipCh <- struct{}{}
+			select {
+			case <-s.parentCtx.Done():
+			case <-p.NotifyClose():
+				s.removePeer(p.Peer())
+			}
 		}(peer)
 
 		s.membershipCh <- struct{}{}
@@ -124,4 +130,15 @@ func (s *Server) handlePeerEvents() {
 func (s *Server) openMessaging(c net.Conn, peer uint64) {
 	ch := s.messaging.Register(peer, c)
 	s.handlePeerMessaging(ch, peer)
+}
+
+func (s *Server) removePeer(peer uint64) {
+	if s.peers.Get(peer) == nil {
+		s.logger.Info("removing non-existent peer", zap.Uint64("peerID", peer))
+		return
+	}
+	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", peer))
+	s.peers.Remove(peer)
+	s.peerGraph.RemovePeer(peer)
+	s.membershipCh <- struct{}{}
 }

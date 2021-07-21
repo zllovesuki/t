@@ -10,7 +10,7 @@ func Register(p Protocol, c Constructor) {
 
 func Get(p Protocol) (Constructor, error) {
 	c, ok := protocolRegistry[p]
-	if !ok {
+	if !ok || p == UnknownProtocol {
 		return nil, ErrUnknownProtocol
 	}
 	return c, nil
