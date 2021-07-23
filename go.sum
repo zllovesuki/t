@@ -177,8 +177,8 @@ github.com/minio/sha256-simd v0.0.0-20190131020904-2d45a736cd16/go.mod h1:2FMWW+
 github.com/minio/sha256-simd v0.1.1-0.20190913151208-6de447530771/go.mod h1:B5e1o+1/KgNmWrSQK08Y6Z1Vb5pwIktudl0J58iy0KM=
 github.com/minio/sha256-simd v0.1.1 h1:5QHSlgo3nt5yKOJrC7W8w7X+NFl8cMPZm96iu8kKUJU=
 github.com/minio/sha256-simd v0.1.1/go.mod h1:B5e1o+1/KgNmWrSQK08Y6Z1Vb5pwIktudl0J58iy0KM=
-github.com/miragespace/memberlist v0.2.5 h1:Q9OxoJ4biJSK0Ed1rjyCkZo1g+nQwjh06sJ9O/TiuU4=
-github.com/miragespace/memberlist v0.2.5/go.mod h1:XuBVYdPYJTBTB4iNLxYbRmzH2LI3Oy8xu9VZjFSX3nU=
+github.com/miragespace/memberlist v0.2.5-0.20210723090033-7b76c3050af2 h1:A59/9BqMpE1Teq5/29qbmq7yDstEG9vYRYZc5ZTPRI4=
+github.com/miragespace/memberlist v0.2.5-0.20210723090033-7b76c3050af2/go.mod h1:XuBVYdPYJTBTB4iNLxYbRmzH2LI3Oy8xu9VZjFSX3nU=
 github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
 github.com/mitchellh/go-wordwrap v0.0.0-20150314170334-ad45545899c7/go.mod h1:ZXFpozHsX6DPmq2I0TCekCxypsnAUbP2oI0UX1GXzOo=

@@ -24,4 +24,4 @@ require (
 	golang.org/x/tools v0.1.5 // indirect
 )
 
-replace github.com/hashicorp/memberlist => github.com/miragespace/memberlist v0.2.5
+replace github.com/hashicorp/memberlist => github.com/miragespace/memberlist v0.2.5-0.20210723090033-7b76c3050af2
