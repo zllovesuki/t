@@ -4,11 +4,12 @@ go 1.16
 
 require (
 	github.com/eggsampler/acme/v3 v3.2.1
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/gookit/config/v2 v2.0.24
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
 	github.com/hashicorp/memberlist v0.2.4
-	github.com/libp2p/go-mplex v0.3.0
+	github.com/libp2p/go-mplex v0.3.1-0.20210721191624-fc8b95830f5c
 	github.com/libp2p/go-yamux/v2 v2.2.0
 	github.com/miekg/dns v1.1.43
 	github.com/pkg/errors v0.9.1

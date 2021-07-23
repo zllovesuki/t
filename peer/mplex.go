@@ -189,20 +189,7 @@ func (p *Mplex) Handle() <-chan multiplexer.LinkConnection {
 }
 
 func (p *Mplex) NotifyClose() <-chan struct{} {
-	ch := make(chan struct{})
-	ticker := time.NewTicker(time.Millisecond * 500)
-	go func() {
-		for {
-			// TOOD(zllovesuki): not like this
-			<-ticker.C
-			if p.session.IsClosed() {
-				close(ch)
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-	return ch
+	return p.session.CloseChan()
 }
 
 func (p *Mplex) Bye() error {
