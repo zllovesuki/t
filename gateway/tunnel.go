@@ -40,6 +40,11 @@ func (g *Gateway) tunnelHandler() http.Handler {
 		},
 		BufferPool:   newBufferPool(),
 		ErrorHandler: g.errorHandler,
+		ModifyResponse: func(r *http.Response) error {
+			// This is only used for metrics, no modification to the response will be done
+			profiler.GatewayRequests.WithLabelValues("success", "forward").Add(1)
+			return nil
+		},
 	}
 }
 

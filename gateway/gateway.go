@@ -85,7 +85,7 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 	conn.SetDeadline(time.Now().Add(time.Second * 5))
 	err := conn.Handshake()
 	if err != nil {
-		g.Logger.Error("tls handshake failed", zap.Error(err), zap.String("remoteAddr", conn.RemoteAddr().String()))
+		g.Logger.Debug("tls handshake failed", zap.Error(err), zap.String("remoteAddr", conn.RemoteAddr().String()))
 		conn.Close()
 		profiler.GatewayRequests.WithLabelValues("error", "handshake").Add(1)
 		return
