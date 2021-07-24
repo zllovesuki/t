@@ -8,13 +8,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-type MultiplexerAccepter struct {
+type multiplexerAccepter struct {
 	Peer multiplexer.Peer
 }
 
-var _ net.Listener = &MultiplexerAccepter{}
+var _ net.Listener = &multiplexerAccepter{}
 
-func (m *MultiplexerAccepter) Accept() (net.Conn, error) {
+func (m *multiplexerAccepter) Accept() (net.Conn, error) {
 	inc, ok := <-m.Peer.Handle()
 	if !ok {
 		return nil, errors.New("connection closed")
@@ -22,10 +22,10 @@ func (m *MultiplexerAccepter) Accept() (net.Conn, error) {
 	return inc.Conn, nil
 }
 
-func (m *MultiplexerAccepter) Addr() net.Addr {
+func (m *multiplexerAccepter) Addr() net.Addr {
 	return nil
 }
 
-func (m *MultiplexerAccepter) Close() error {
+func (m *multiplexerAccepter) Close() error {
 	return m.Peer.Bye()
 }

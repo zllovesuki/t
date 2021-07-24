@@ -182,7 +182,7 @@ func main() {
 		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
 	go func() {
-		accepter := &MultiplexerAccepter{
+		accepter := &multiplexerAccepter{
 			Peer: p,
 		}
 		http.Serve(accepter, proxy)
