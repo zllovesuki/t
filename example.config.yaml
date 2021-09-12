@@ -45,6 +45,9 @@ multiplexer:
   peer: 0
   # which port to listen for client's multiplexer connection
   client: 9000
+  # protocol for inter-peer communication. 1: Yamux, 2: Mplex, 3: QUIC
+  # client can specify the protocol when connecting with -protocol argument
+  protocol: 3
 
 tls:
   # peer certificates should be self-signed with "server auth" and "client auth"
