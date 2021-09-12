@@ -16,10 +16,13 @@ See `example.config.yaml` for reference. You will need to generate your own CA a
 - [memberlist](https://github.com/hashicorp/memberlist) for peer discovery, state synchronization (updating the peer graph), and failure detection.
 
 `t` also uses the following for multiplexing:
-- [go-mplex](https://github.com/libp2p/go-mplex)
-- [yamux](https://github.com/hashicorp/yamux)
+- [tcp/go-mplex](https://github.com/libp2p/go-mplex)
+- [tcp/yamux](https://github.com/hashicorp/yamux)
+- [udp/QUIC](https://github.com/lucas-clemente/quic-go)
 
-`t` supports these two protocols for creating logical streams between peers and clients, and clients can be connected to any one of the peers, and the gateway on _any_ of the peers will route the HTTPS request to the client's forwarding port.
+`t` supports these protocols for creating logical streams between peers and clients, and clients can be connected to any one of the peers, and the gateway on _any_ of the peers will route the HTTPS request to the client's forwarding port.
+
+Because of the architecture, peers and clients can be connected to each other with different protocols. This allows for complex networking environments where some peers are not able to communicate via QUIC because of buggy cloud firewall configuration, while other peers are able to communicate via QUIC.
 
 The peers have to be publicly accessible on the Internet (they are the gateway, after all).
 

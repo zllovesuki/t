@@ -68,7 +68,12 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 
 	s.logger.Info("gossip: new peer discovered via gossip")
 
-	if m.PeerID < s.PeerID() {
+	if s.meta.RespondOnly {
+		logger.Info("gossip: current peer is configured to respond connections only, acting as responder")
+		return
+	}
+
+	if !m.RespondOnly && m.PeerID < s.PeerID() {
 		logger.Info("gossip: new peer has a lower PeerID, acting as responder")
 		go func(m Meta) {
 			time.Sleep(time.Second * 10)

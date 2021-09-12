@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	MetaSize = 25
+	MetaSize = 26
 )
 
 type Meta struct {
@@ -17,6 +17,7 @@ type Meta struct {
 	ConnectPort uint64
 	PeerID      uint64
 	Protocol    multiplexer.Protocol
+	RespondOnly bool
 }
 
 func (m *Meta) Pack() []byte {
@@ -26,6 +27,9 @@ func (m *Meta) Pack() []byte {
 	binary.BigEndian.PutUint64(b[8:16], m.ConnectPort)
 	binary.BigEndian.PutUint64(b[16:24], m.PeerID)
 	b[24] = byte(m.Protocol)
+	if m.RespondOnly {
+		b[25] = 1
+	}
 	return b
 }
 
@@ -38,5 +42,8 @@ func (m *Meta) Unpack(b []byte) error {
 	m.ConnectPort = binary.BigEndian.Uint64(b[8:16])
 	m.PeerID = binary.BigEndian.Uint64(b[16:24])
 	m.Protocol = multiplexer.Protocol(b[24])
+	if b[25] == 1 {
+		m.RespondOnly = true
+	}
 	return nil
 }

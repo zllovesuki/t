@@ -48,6 +48,10 @@ multiplexer:
   # protocol for inter-peer communication. 1: Yamux, 2: Mplex, 3: QUIC
   # client can specify the protocol when connecting with -protocol argument
   protocol: 3
+  # sets this peer to respond to peer connection only and never initiate outgoing connection.
+  # this is useful where other peers are communicating via QUIC, but this peer is behind
+  # firewall that does not work with UDP hole punching, and can be only connected via TCP.
+  respondOnly: true
 
 tls:
   # peer certificates should be self-signed with "server auth" and "client auth"
