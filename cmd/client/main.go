@@ -109,9 +109,10 @@ func main() {
 			InsecureSkipVerify: *debug,
 			NextProtos:         []string{"multiplexer"},
 		}, &quic.Config{
-			KeepAlive:            true,
-			HandshakeIdleTimeout: time.Second * 3,
-			MaxIdleTimeout:       time.Second * 15,
+			KeepAlive:               true,
+			HandshakeIdleTimeout:    time.Second * 3,
+			MaxIdleTimeout:          time.Second * 15,
+			DisablePathMTUDiscovery: true,
 		})
 		if err != nil {
 			logger.Error("connecting to quic peer", zap.Error(err))

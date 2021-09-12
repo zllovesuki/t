@@ -154,9 +154,10 @@ func main() {
 	defer clientListener.Close()
 
 	quicListener, err := quic.ListenAddr(clientAddr, clientTLSConfig, &quic.Config{
-		KeepAlive:            true,
-		HandshakeIdleTimeout: time.Second * 3,
-		MaxIdleTimeout:       time.Second * 15,
+		KeepAlive:               true,
+		HandshakeIdleTimeout:    time.Second * 3,
+		MaxIdleTimeout:          time.Second * 15,
+		DisablePathMTUDiscovery: true,
 	})
 	if err != nil {
 		logger.Fatal("listening for quic connection", zap.Error(err))
