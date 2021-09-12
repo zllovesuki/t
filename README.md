@@ -39,6 +39,8 @@ The peers have to be publicly accessible on the Internet (they are the gateway, 
 
 # How to Build
 
+You will need Go 1.17+
+
 ```bash
 # building the server
 CGO_ENABLED=0 go build -tags 'osusergo netgo' -ldflags '-s -w -extldflags "-static"' -a -o bin/server ./cmd/server
