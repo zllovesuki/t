@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -18,10 +19,12 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
 
+	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +43,7 @@ var (
 	where    = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
 	forward  = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
 	debug    = flag.Bool("debug", false, "verbose logging and disable TLS verification")
-	protocol = flag.Int("protocol", int(multiplexer.MplexProtocol), "multiplexer protocol to be used (1: Yamux; 2: Mplex) - usually used in debugging")
+	protocol = flag.Int("protocol", int(multiplexer.MplexProtocol), "multiplexer protocol to be used (1: Yamux; 2: Mplex; 3: QUIC) - usually used in debugging")
 )
 
 func main() {
@@ -94,49 +97,52 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector, err := tls.Dial("tcp", peerTarget, &tls.Config{
-		InsecureSkipVerify: *debug,
-	})
-	if err != nil {
-		logger.Error("connecting to peer", zap.Error(err))
-		return
-	}
-
 	proposedProtocol := multiplexer.Protocol(*protocol)
 
-	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
-
-	link := multiplexer.Link{
-		Protocol: proposedProtocol,
-	}
-	buf := link.Pack()
-	n, err := connector.Write(buf)
-	if err != nil {
-		logger.Error("writing handshake to peer", zap.Error(err))
-		return
-	}
-	if n != multiplexer.LinkSize {
-		logger.Error("invalid handshake length sent", zap.Int("length", n))
-		return
-	}
-
-	n, err = connector.Read(buf)
-	if err != nil {
-		logger.Error("reading handshake from peer", zap.Error(err))
-		return
-	}
-	if n != multiplexer.LinkSize {
-		logger.Error("invalid handshake length received", zap.Int("length", n))
-		return
-	}
-	link.Unpack(buf)
-
+	var connector interface{}
+	var link multiplexer.Link
 	var g shared.GeneratedName
-	err = json.NewDecoder(connector).Decode(&g)
-	if err != nil {
-		logger.Error("unmarshaling generated name response")
-		return
+
+	switch proposedProtocol {
+	case multiplexer.QUICProtocol:
+		connector, err = quic.DialAddr(peerTarget, &tls.Config{
+			InsecureSkipVerify: *debug,
+			NextProtos:         []string{"multiplexer"},
+		}, &quic.Config{
+			KeepAlive:            true,
+			HandshakeIdleTimeout: time.Second * 3,
+			MaxIdleTimeout:       time.Second * 15,
+		})
+		if err != nil {
+			logger.Error("connecting to quic peer", zap.Error(err))
+			return
+		}
+		func() {
+			x, sErr := connector.(quic.Session).OpenStream()
+			if sErr != nil {
+				logger.Error("opening quic handshake stream", zap.Error(err))
+				return
+			}
+			defer x.Close()
+			link, g = peerNegotiation(logger, &peer.QuicConn{
+				Stream:  x,
+				Session: connector.(quic.Session),
+			}, proposedProtocol)
+		}()
+	case multiplexer.YamuxProtocol, multiplexer.MplexProtocol:
+		connector, err = tls.Dial("tcp", peerTarget, &tls.Config{
+			InsecureSkipVerify: *debug,
+		})
+		if err != nil {
+			logger.Error("connecting to peer", zap.Error(err))
+			return
+		}
+		link, g = peerNegotiation(logger, connector.(net.Conn), proposedProtocol)
+	default:
+		logger.Fatal("Unknown protocol", zap.Int("protocol", *protocol))
 	}
+
+	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
 
 	pm := state.NewPeerMap(logger, link.Source)
 
@@ -187,11 +193,43 @@ func main() {
 		}
 		http.Serve(accepter, proxy)
 	}()
-	go func() {
-		<-p.NotifyClose()
-		pm.Remove(p.Peer())
-	}()
 
 	<-sigs
+	pm.Remove(p.Peer())
 
+}
+
+func peerNegotiation(logger *zap.Logger, connector net.Conn, protocol multiplexer.Protocol) (link multiplexer.Link, g shared.GeneratedName) {
+	link = multiplexer.Link{
+		Protocol: multiplexer.Protocol(protocol),
+	}
+	buf := link.Pack()
+	n, err := connector.Write(buf)
+	if err != nil {
+		logger.Fatal("writing handshake to peer", zap.Error(err))
+		return
+	}
+	if n != multiplexer.LinkSize {
+		logger.Fatal("invalid handshake length sent", zap.Int("length", n))
+		return
+	}
+
+	n, err = connector.Read(buf)
+	if err != nil {
+		logger.Fatal("reading handshake from peer", zap.Error(err))
+		return
+	}
+	if n != multiplexer.LinkSize {
+		logger.Fatal("invalid handshake length received", zap.Int("length", n))
+		return
+	}
+	link.Unpack(buf)
+
+	err = json.NewDecoder(connector).Decode(&g)
+	if err != nil {
+		logger.Fatal("unmarshaling generated name response")
+		return
+	}
+
+	return
 }

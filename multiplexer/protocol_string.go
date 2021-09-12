@@ -11,11 +11,12 @@ func _() {
 	_ = x[UnknownProtocol-0]
 	_ = x[YamuxProtocol-1]
 	_ = x[MplexProtocol-2]
+	_ = x[QUICProtocol-3]
 }
 
-const _Protocol_name = "UnknownProtocolYamuxProtocolMplexProtocol"
+const _Protocol_name = "UnknownProtocolYamuxProtocolMplexProtocolQUICProtocol"
 
-var _Protocol_index = [...]uint8{0, 15, 28, 41}
+var _Protocol_index = [...]uint8{0, 15, 28, 41, 53}
 
 func (i Protocol) String() string {
 	if i < 0 || i >= Protocol(len(_Protocol_index)-1) {

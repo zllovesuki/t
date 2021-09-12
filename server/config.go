@@ -7,6 +7,7 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -28,17 +29,18 @@ type Network struct {
 }
 
 type Config struct {
-	Context        context.Context
-	Logger         *zap.Logger
-	Network        Network
-	PeerListener   net.Listener
-	PeerTLSConfig  *tls.Config
-	ClientListener net.Listener
-	Multiplexer    MultiplexerConfig
-	Gossip         GossipConfig
-	CertManager    *acme.CertManager
-	Debug          bool
-	Domain         string
+	Context            context.Context
+	Logger             *zap.Logger
+	Network            Network
+	PeerListener       net.Listener
+	PeerTLSConfig      *tls.Config
+	ClientTLSListener  net.Listener
+	ClientQUICListener quic.Listener
+	Multiplexer        MultiplexerConfig
+	Gossip             GossipConfig
+	CertManager        *acme.CertManager
+	Debug              bool
+	Domain             string
 }
 
 func (c *Config) validate() error {
@@ -54,8 +56,11 @@ func (c *Config) validate() error {
 	if c.PeerTLSConfig == nil {
 		return errors.New("nil peer tls config is invalid")
 	}
-	if c.ClientListener == nil {
+	if c.ClientTLSListener == nil {
 		return errors.New("nil client listener is invalid")
+	}
+	if c.ClientQUICListener == nil {
+		return errors.New("nil quic listener is invalid")
 	}
 	if c.CertManager == nil {
 		return errors.New("nil cert manager is invalid")

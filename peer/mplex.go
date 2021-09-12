@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -20,11 +19,10 @@ func init() {
 
 // Mplex is a Peer implementation using libp2p's mplex
 type Mplex struct {
-	logger   *zap.Logger
-	session  *multiplex.Multiplex
-	config   multiplexer.Config
-	incoming chan multiplexer.LinkConnection
-	closed   *int32
+	logger  *zap.Logger
+	session *multiplex.Multiplex
+	config  multiplexer.Config
+	channel *multiplexer.Channel
 }
 
 var _ multiplexer.Peer = &Mplex{}
@@ -34,19 +32,19 @@ func NewMplexPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 		return nil, err
 	}
 
-	session := multiplex.NewMultiplex(config.Conn, config.Initiator)
+	session := multiplex.NewMultiplex(config.Conn.(net.Conn), config.Initiator)
 	logger := config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator))
 
 	return &Mplex{
-		logger:   logger,
-		session:  session,
-		config:   config,
-		incoming: make(chan multiplexer.LinkConnection, 32),
-		closed:   new(int32),
+		logger:  logger,
+		session: session,
+		config:  config,
+		channel: multiplexer.NewChannel(),
 	}, nil
 }
 
 func (p *Mplex) Start(ctx context.Context) {
+	go p.channel.Run(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -65,6 +63,7 @@ func (p *Mplex) Start(ctx context.Context) {
 }
 
 func (p *Mplex) Null(ctx context.Context) {
+	go p.channel.Run(ctx)
 	select {
 	case <-ctx.Done():
 		return
@@ -79,7 +78,7 @@ func (p *Mplex) Null(ctx context.Context) {
 }
 
 func (p *Mplex) Addr() net.Addr {
-	return p.config.Conn.RemoteAddr()
+	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
 type mplexConn struct {
@@ -110,13 +109,13 @@ func (p *Mplex) streamHandshake(c context.Context, conn *multiplex.Stream) {
 	}
 
 	s.Unpack(buf)
-	p.incoming <- multiplexer.LinkConnection{
+	p.channel.Put(multiplexer.LinkConnection{
 		Link: s,
 		Conn: &mplexConn{
-			parentConn: p.config.Conn,
+			parentConn: p.config.Conn.(net.Conn),
 			Stream:     conn,
 		},
-	}
+	})
 }
 
 func (p *Mplex) Initiator() bool {
@@ -148,7 +147,7 @@ func (p *Mplex) Messaging(ctx context.Context) (net.Conn, error) {
 	}
 	return &mplexConn{
 		Stream:     n,
-		parentConn: p.config.Conn,
+		parentConn: p.config.Conn.(net.Conn),
 	}, nil
 }
 
@@ -169,7 +168,7 @@ func (p *Mplex) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, er
 
 	return &mplexConn{
 		Stream:     n,
-		parentConn: p.config.Conn,
+		parentConn: p.config.Conn.(net.Conn),
 	}, nil
 }
 
@@ -185,7 +184,7 @@ func (p *Mplex) Bidirectional(ctx context.Context, conn net.Conn, link multiplex
 }
 
 func (p *Mplex) Handle() <-chan multiplexer.LinkConnection {
-	return p.incoming
+	return p.channel.Incoming()
 }
 
 func (p *Mplex) NotifyClose() <-chan struct{} {
@@ -193,10 +192,9 @@ func (p *Mplex) NotifyClose() <-chan struct{} {
 }
 
 func (p *Mplex) Bye() error {
-	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
-		close(p.incoming)
+	if p.channel.Close() {
 		p.session.Close()
-		p.config.Conn.Close()
+		p.config.Conn.(net.Conn).Close()
 	}
 	return nil
 }

@@ -1,29 +1,63 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
-func (s *Server) clientHandshake(conn net.Conn) {
+func (s *Server) quicHandshake(sess quic.Session) {
+	ctx, cancel := context.WithTimeout(s.parentCtx, time.Second*3)
+	defer cancel()
+
 	var err error
 	logger := s.logger
 	defer func() {
 		if err == nil {
 			return
 		}
-		logger.Error("error during client handshake", zap.Error(err))
+		logger.Error("error during quic client handshake", zap.Error(err))
+		sess.CloseWithError(quic.ApplicationErrorCode(0), err.Error())
+	}()
+
+	conn, err := sess.AcceptStream(ctx)
+	if err != nil {
+		logger.Error("error accepting quic handshake stream", zap.Error(err))
+		return
+	}
+	defer conn.Close()
+
+	err = s.clientNegotiation(s.logger, sess, &peer.QuicConn{
+		Stream:  conn,
+		Session: sess,
+	}, multiplexer.AcceptableQUICProtocols)
+}
+
+func (s *Server) tlsHandshake(conn net.Conn) {
+	var err error
+	logger := s.logger
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("error during tls client handshake", zap.Error(err))
 		conn.Close()
 	}()
 
+	err = s.clientNegotiation(s.logger, conn, conn, multiplexer.AcceptableTLSProtocols)
+}
+
+func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []multiplexer.Protocol) (err error) {
 	var link multiplexer.Link
 	var length int
 	r := make([]byte, multiplexer.LinkSize)
@@ -40,6 +74,18 @@ func (s *Server) clientHandshake(conn net.Conn) {
 		return
 	}
 	link.Unpack(r)
+
+	validProtocol := false
+	for _, p := range acceptableProtocols {
+		if p == link.Protocol {
+			validProtocol = true
+			break
+		}
+	}
+	if !validProtocol {
+		err = errors.Errorf("unacceptable protocol: %d", link.Protocol)
+		return
+	}
 
 	_, err = multiplexer.Get(link.Protocol)
 	if err != nil {
@@ -83,7 +129,7 @@ func (s *Server) clientHandshake(conn net.Conn) {
 
 	err = s.clients.NewPeer(s.parentCtx, link.Protocol, multiplexer.Config{
 		Logger:    logger,
-		Conn:      conn,
+		Conn:      connector,
 		Peer:      link.Source,
 		Initiator: false,
 		Wait:      time.Second,
@@ -91,6 +137,8 @@ func (s *Server) clientHandshake(conn net.Conn) {
 	if err != nil {
 		err = errors.Wrap(err, "setting up client")
 	}
+
+	return
 }
 
 func (s *Server) handleClientEvents() {

@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
@@ -21,11 +20,10 @@ func init() {
 
 // Yamux is a Peer implementation using hashicorp's Yamux
 type Yamux struct {
-	logger   *zap.Logger
-	session  *yamux.Session
-	config   multiplexer.Config
-	incoming chan multiplexer.LinkConnection
-	closed   *int32
+	logger  *zap.Logger
+	session *yamux.Session
+	config  multiplexer.Config
+	channel *multiplexer.Channel
 }
 
 var _ multiplexer.Peer = &Yamux{}
@@ -62,24 +60,24 @@ func NewYamuxPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	cfg.LogOutput = &zapWriter{logger: logger}
 
 	if config.Initiator {
-		session, err = yamux.Client(config.Conn, cfg)
+		session, err = yamux.Client(config.Conn.(net.Conn), cfg)
 	} else {
-		session, err = yamux.Server(config.Conn, cfg)
+		session, err = yamux.Server(config.Conn.(net.Conn), cfg)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
 	}
 
 	return &Yamux{
-		logger:   logger,
-		session:  session,
-		config:   config,
-		incoming: make(chan multiplexer.LinkConnection, 32),
-		closed:   new(int32),
+		logger:  logger,
+		session: session,
+		config:  config,
+		channel: multiplexer.NewChannel(),
 	}, nil
 }
 
 func (p *Yamux) Start(ctx context.Context) {
+	go p.channel.Run(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -100,6 +98,7 @@ func (p *Yamux) Start(ctx context.Context) {
 // Null will terminate the session as soon a new stream request is received. This is primarily
 // used to disconnect badly behaving clients.
 func (p *Yamux) Null(ctx context.Context) {
+	go p.channel.Run(ctx)
 	select {
 	case <-ctx.Done():
 		return
@@ -114,7 +113,7 @@ func (p *Yamux) Null(ctx context.Context) {
 }
 
 func (p *Yamux) Addr() net.Addr {
-	return p.config.Conn.RemoteAddr()
+	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
 func (p *Yamux) streamHandshake(c context.Context, conn net.Conn) {
@@ -132,10 +131,10 @@ func (p *Yamux) streamHandshake(c context.Context, conn net.Conn) {
 	}
 
 	s.Unpack(buf)
-	p.incoming <- multiplexer.LinkConnection{
+	p.channel.Put(multiplexer.LinkConnection{
 		Link: s,
 		Conn: conn,
-	}
+	})
 }
 
 func (p *Yamux) Initiator() bool {
@@ -197,7 +196,7 @@ func (p *Yamux) Bidirectional(ctx context.Context, conn net.Conn, link multiplex
 }
 
 func (p *Yamux) Handle() <-chan multiplexer.LinkConnection {
-	return p.incoming
+	return p.channel.Incoming()
 }
 
 func (p *Yamux) NotifyClose() <-chan struct{} {
@@ -205,10 +204,9 @@ func (p *Yamux) NotifyClose() <-chan struct{} {
 }
 
 func (p *Yamux) Bye() error {
-	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
-		close(p.incoming)
+	if p.channel.Close() {
 		p.session.Close()
-		p.config.Conn.Close()
+		p.config.Conn.(net.Conn).Close()
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package multiplexer
 
 import (
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/pkg/errors"
@@ -17,7 +16,17 @@ const (
 	UnknownProtocol Protocol = iota
 	YamuxProtocol
 	MplexProtocol
+	QUICProtocol
 )
+
+var AcceptableTLSProtocols = []Protocol{
+	YamuxProtocol,
+	MplexProtocol,
+}
+
+var AcceptableQUICProtocols = []Protocol{
+	QUICProtocol,
+}
 
 var (
 	ErrUnknownProtocol = fmt.Errorf("unknown protocol")
@@ -25,7 +34,7 @@ var (
 
 type Config struct {
 	Logger    *zap.Logger
-	Conn      net.Conn
+	Conn      interface{}
 	Peer      uint64
 	Initiator bool
 	Wait      time.Duration
