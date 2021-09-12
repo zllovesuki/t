@@ -19,12 +19,12 @@ func init() {
 }
 
 type QUIC struct {
-	logger    *zap.Logger
-	session   quic.Session
-	config    multiplexer.Config
-	incoming  chan multiplexer.LinkConnection
-	closed    *int32
-	timeoutCh chan struct{}
+	logger          *zap.Logger
+	session         quic.Session
+	config          multiplexer.Config
+	channel         *multiplexer.Channel
+	timeoutCh       chan struct{}
+	timeoutChClosed *int32
 }
 
 var _ multiplexer.Peer = &QUIC{}
@@ -35,16 +35,17 @@ func NewQuicPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	}
 
 	return &QUIC{
-		logger:    config.Logger,
-		session:   config.Conn.(quic.Session),
-		config:    config,
-		incoming:  make(chan multiplexer.LinkConnection, 32),
-		closed:    new(int32),
-		timeoutCh: make(chan struct{}),
+		logger:          config.Logger,
+		session:         config.Conn.(quic.Session),
+		config:          config,
+		channel:         multiplexer.NewChannel(),
+		timeoutCh:       make(chan struct{}),
+		timeoutChClosed: new(int32),
 	}, nil
 }
 
 func (p *QUIC) Start(ctx context.Context) {
+	go p.channel.Run(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -55,7 +56,7 @@ func (p *QUIC) Start(ctx context.Context) {
 				if !errors.Is(err, io.EOF) {
 					p.logger.Error("accepting stream from peers", zap.Error(err))
 				}
-				close(p.timeoutCh)
+				p.closeTimeoutCh()
 				return
 			}
 			go p.streamHandshake(ctx, conn)
@@ -64,13 +65,14 @@ func (p *QUIC) Start(ctx context.Context) {
 }
 
 func (p *QUIC) Null(ctx context.Context) {
+	go p.channel.Run(ctx)
 	select {
 	case <-ctx.Done():
 		return
 	default:
 		_, err := p.session.AcceptStream(p.session.Context())
 		if err != nil {
-			close(p.timeoutCh)
+			p.closeTimeoutCh()
 			return
 		}
 		p.logger.Warn("nulled Peer attempted to request a new stream")
@@ -110,13 +112,13 @@ func (p *QUIC) streamHandshake(c context.Context, conn quic.Stream) {
 	}
 
 	s.Unpack(buf)
-	p.incoming <- multiplexer.LinkConnection{
+	p.channel.Put(multiplexer.LinkConnection{
 		Link: s,
 		Conn: &QuicConn{
 			Stream:  conn,
 			Session: p.session,
 		},
-	}
+	})
 }
 
 func (p *QUIC) Initiator() bool {
@@ -185,7 +187,13 @@ func (p *QUIC) Bidirectional(ctx context.Context, conn net.Conn, link multiplexe
 }
 
 func (p *QUIC) Handle() <-chan multiplexer.LinkConnection {
-	return p.incoming
+	return p.channel.Incoming()
+}
+
+func (p *QUIC) closeTimeoutCh() {
+	if atomic.CompareAndSwapInt32(p.timeoutChClosed, 0, 1) {
+		close(p.timeoutCh)
+	}
 }
 
 func (p *QUIC) NotifyClose() <-chan struct{} {
@@ -193,9 +201,9 @@ func (p *QUIC) NotifyClose() <-chan struct{} {
 }
 
 func (p *QUIC) Bye() error {
-	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
-		close(p.incoming)
+	if p.channel.Close() {
 		p.session.CloseWithError(quic.ApplicationErrorCode(1), "peer is closing")
+		p.closeTimeoutCh()
 	}
 	return nil
 }

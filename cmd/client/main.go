@@ -193,12 +193,9 @@ func main() {
 		}
 		http.Serve(accepter, proxy)
 	}()
-	go func() {
-		<-p.NotifyClose()
-		pm.Remove(p.Peer())
-	}()
 
 	<-sigs
+	pm.Remove(p.Peer())
 
 }
 
