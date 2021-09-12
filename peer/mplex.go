@@ -81,6 +81,10 @@ func (p *Mplex) Addr() net.Addr {
 	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
+func (p *Mplex) Protocol() multiplexer.Protocol {
+	return multiplexer.MplexProtocol
+}
+
 type mplexConn struct {
 	*multiplex.Stream
 	parentConn net.Conn

@@ -24,7 +24,6 @@ import (
 	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
 
-	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
 )
 
@@ -100,50 +99,25 @@ func main() {
 	proposedProtocol := multiplexer.Protocol(*protocol)
 
 	var connector interface{}
+	var conn net.Conn
 	var link multiplexer.Link
 	var g shared.GeneratedName
 
-	switch proposedProtocol {
-	case multiplexer.QUICProtocol:
-		connector, err = quic.DialAddr(peerTarget, &tls.Config{
+	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
+
+	connector, conn, _, err = peer.Dial(peer.DialOptions{
+		Protocol: proposedProtocol,
+		Addr:     peerTarget,
+		TLS: &tls.Config{
 			InsecureSkipVerify: *debug,
 			NextProtos:         []string{"multiplexer"},
-		}, &quic.Config{
-			KeepAlive:               true,
-			HandshakeIdleTimeout:    time.Second * 3,
-			MaxIdleTimeout:          time.Second * 15,
-			DisablePathMTUDiscovery: true,
-		})
-		if err != nil {
-			logger.Error("connecting to quic peer", zap.Error(err))
-			return
-		}
-		func() {
-			x, sErr := connector.(quic.Session).OpenStream()
-			if sErr != nil {
-				logger.Error("opening quic handshake stream", zap.Error(err))
-				return
-			}
-			defer x.Close()
-			link, g = peerNegotiation(logger, &peer.QuicConn{
-				Stream:  x,
-				Session: connector.(quic.Session),
-			}, proposedProtocol)
-		}()
-	case multiplexer.YamuxProtocol, multiplexer.MplexProtocol:
-		connector, err = tls.Dial("tcp", peerTarget, &tls.Config{
-			InsecureSkipVerify: *debug,
-		})
-		if err != nil {
-			logger.Error("connecting to peer", zap.Error(err))
-			return
-		}
-		link, g = peerNegotiation(logger, connector.(net.Conn), proposedProtocol)
-	default:
-		logger.Fatal("Unknown protocol", zap.Int("protocol", *protocol))
+		},
+	})
+	if err != nil {
+		logger.Fatal("connecting to peer", zap.Error(err))
 	}
 
-	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
+	link, g = peerNegotiation(logger, conn, proposedProtocol)
 
 	pm := state.NewPeerMap(logger, link.Source)
 

@@ -1,17 +1,44 @@
 package server
 
 import (
+	"context"
 	"net"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/state"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
-func (s *Server) peerHandshake(conn net.Conn) {
+func (s *Server) peerQUICHandshake(sess quic.Session) {
+	ctx, cancel := context.WithTimeout(s.parentCtx, time.Second*3)
+	defer cancel()
+
+	var err error
+	logger := s.logger
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("error during quic peer handshake", zap.Error(err))
+		sess.CloseWithError(quic.ApplicationErrorCode(0), err.Error())
+	}()
+
+	conn, err := sess.AcceptStream(ctx)
+	if err != nil {
+		logger.Error("error accepting quic handshake stream", zap.Error(err))
+		return
+	}
+	defer conn.Close()
+
+	err = s.peerNegotiation(s.logger, sess, peer.WrapQUIC(sess, conn), multiplexer.AcceptableQUICProtocols)
+}
+
+func (s *Server) peerTLSHandshake(conn net.Conn) {
 	var err error
 	logger := s.logger
 	defer func() {
@@ -26,6 +53,10 @@ func (s *Server) peerHandshake(conn net.Conn) {
 		conn.Close()
 	}()
 
+	err = s.peerNegotiation(logger, conn, conn, multiplexer.AcceptableTLSProtocols)
+}
+
+func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []multiplexer.Protocol) (err error) {
 	var link multiplexer.Link
 	var read int
 	r := make([]byte, multiplexer.LinkSize)
@@ -39,8 +70,21 @@ func (s *Server) peerHandshake(conn net.Conn) {
 	}
 	if read != multiplexer.LinkSize {
 		err = errors.Errorf("invalid handshake length received from peer: %d", read)
+		return
 	}
 	link.Unpack(r)
+
+	validProtocol := false
+	for _, p := range acceptableProtocols {
+		if p == link.Protocol {
+			validProtocol = true
+			break
+		}
+	}
+	if !validProtocol {
+		err = errors.Errorf("unacceptable protocol: %d", link.Protocol)
+		return
+	}
 
 	_, err = multiplexer.Get(link.Protocol)
 	if err != nil {
@@ -65,7 +109,7 @@ func (s *Server) peerHandshake(conn net.Conn) {
 
 	err = s.peers.NewPeer(s.parentCtx, link.Protocol, multiplexer.Config{
 		Logger:    logger,
-		Conn:      conn,
+		Conn:      connector,
 		Peer:      link.Source,
 		Initiator: false,
 		Wait:      time.Second,
@@ -73,11 +117,13 @@ func (s *Server) peerHandshake(conn net.Conn) {
 	if err != nil {
 		err = errors.Wrap(err, "setting up peer")
 	}
+
+	return
 }
 
 func (s *Server) handlePeerEvents() {
 	for peer := range s.peers.Notify() {
-		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peerID", peer.Peer()))
+		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peerID", peer.Peer()), zap.String("protocol", peer.Protocol().String()))
 		// update our peer graph in a different goroutine with closure
 		// as this may block
 		go func(p multiplexer.Peer) {

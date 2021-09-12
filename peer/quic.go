@@ -18,6 +18,15 @@ func init() {
 	multiplexer.Register(multiplexer.QUICProtocol, NewQuicPeer)
 }
 
+func QUICConfig() *quic.Config {
+	return &quic.Config{
+		KeepAlive:               true,
+		HandshakeIdleTimeout:    time.Second * 3,
+		MaxIdleTimeout:          time.Second * 15,
+		DisablePathMTUDiscovery: true,
+	}
+}
+
 type QUIC struct {
 	logger          *zap.Logger
 	session         quic.Session
@@ -51,7 +60,7 @@ func (p *QUIC) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			conn, err := p.session.AcceptStream(p.session.Context())
+			conn, err := p.session.AcceptStream(ctx)
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					p.logger.Error("accepting stream from peers", zap.Error(err))
@@ -70,7 +79,7 @@ func (p *QUIC) Null(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	default:
-		_, err := p.session.AcceptStream(p.session.Context())
+		_, err := p.session.AcceptStream(ctx)
 		if err != nil {
 			p.closeTimeoutCh()
 			return
@@ -84,16 +93,20 @@ func (p *QUIC) Addr() net.Addr {
 	return p.config.Conn.(quic.Session).RemoteAddr()
 }
 
-type QuicConn struct {
+func (p *QUIC) Protocol() multiplexer.Protocol {
+	return multiplexer.QUICProtocol
+}
+
+type quicConn struct {
 	quic.Stream
 	Session quic.Session
 }
 
-func (m *QuicConn) LocalAddr() net.Addr {
+func (m *quicConn) LocalAddr() net.Addr {
 	return m.Session.LocalAddr()
 }
 
-func (m *QuicConn) RemoteAddr() net.Addr {
+func (m *quicConn) RemoteAddr() net.Addr {
 	return m.Session.RemoteAddr()
 }
 
@@ -114,7 +127,7 @@ func (p *QUIC) streamHandshake(c context.Context, conn quic.Stream) {
 	s.Unpack(buf)
 	p.channel.Put(multiplexer.LinkConnection{
 		Link: s,
-		Conn: &QuicConn{
+		Conn: &quicConn{
 			Stream:  conn,
 			Session: p.session,
 		},
@@ -148,7 +161,7 @@ func (p *QUIC) Messaging(ctx context.Context) (net.Conn, error) {
 	if written != multiplexer.LinkSize {
 		return nil, errors.Errorf("invalid messaging handshake length: %d", written)
 	}
-	return &QuicConn{
+	return &quicConn{
 		Stream:  n,
 		Session: p.session,
 	}, nil
@@ -169,7 +182,7 @@ func (p *QUIC) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, err
 		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
 	}
 
-	return &QuicConn{
+	return &quicConn{
 		Stream:  n,
 		Session: p.session,
 	}, nil

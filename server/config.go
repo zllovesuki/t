@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/zllovesuki/t/acme"
+	"github.com/zllovesuki/t/multiplexer"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
@@ -13,8 +14,9 @@ import (
 )
 
 type MultiplexerConfig struct {
-	Peer   int
-	Client int
+	Peer     int
+	Client   int
+	Protocol multiplexer.Protocol
 }
 
 type GossipConfig struct {
@@ -32,7 +34,8 @@ type Config struct {
 	Context            context.Context
 	Logger             *zap.Logger
 	Network            Network
-	PeerListener       net.Listener
+	PeerTLSListener    net.Listener
+	PeerQUICListener   quic.Listener
 	PeerTLSConfig      *tls.Config
 	ClientTLSListener  net.Listener
 	ClientQUICListener quic.Listener
@@ -50,17 +53,20 @@ func (c *Config) validate() error {
 	if c.Logger == nil {
 		return errors.New("nil logger is invalid")
 	}
-	if c.PeerListener == nil {
-		return errors.New("nil peer listener is invalid")
+	if c.PeerTLSListener == nil {
+		return errors.New("nil peer tls listener is invalid")
+	}
+	if c.PeerQUICListener == nil {
+		return errors.New("nil peer quic listener is invalid")
 	}
 	if c.PeerTLSConfig == nil {
 		return errors.New("nil peer tls config is invalid")
 	}
 	if c.ClientTLSListener == nil {
-		return errors.New("nil client listener is invalid")
+		return errors.New("nil client tls listener is invalid")
 	}
 	if c.ClientQUICListener == nil {
-		return errors.New("nil quic listener is invalid")
+		return errors.New("nil client quic listener is invalid")
 	}
 	if c.CertManager == nil {
 		return errors.New("nil cert manager is invalid")

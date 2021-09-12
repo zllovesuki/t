@@ -116,6 +116,10 @@ func (p *Yamux) Addr() net.Addr {
 	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
+func (p *Yamux) Protocol() multiplexer.Protocol {
+	return multiplexer.YamuxProtocol
+}
+
 func (p *Yamux) streamHandshake(c context.Context, conn net.Conn) {
 	var s multiplexer.Link
 	buf := make([]byte, multiplexer.LinkSize)

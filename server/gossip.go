@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
@@ -194,26 +194,10 @@ func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
 
 func (s *Server) connectPeer(m Meta) {
 	var err error
-	var conn *tls.Conn
+	var connector interface{}
+	var conn net.Conn
+	var closer func() = func() {}
 	logger := s.logger.With(zap.Any("meta", m))
-
-	conn, err = tls.DialWithDialer(&net.Dialer{
-		Timeout: time.Second * 3,
-	}, "tcp", fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort), s.config.PeerTLSConfig)
-	if err != nil {
-		logger.Error("opening tls connection", zap.Error(err))
-		return
-	}
-
-	defer func() {
-		if err == nil {
-			return
-		}
-		logger.Error("connecting to peer", zap.Error(err))
-		conn.Close()
-	}()
-
-	logger.Debug("initiating handshake with peer")
 
 	link := multiplexer.Link{
 		Source:      s.PeerID(),
@@ -221,11 +205,38 @@ func (s *Server) connectPeer(m Meta) {
 		Protocol:    m.Protocol,
 	}
 	buf := link.Pack()
-	conn.Write(buf)
+
+	logger.Debug("initiating handshake with peer")
+
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("connecting to peer", zap.Error(err))
+		if closer != nil {
+			closer()
+		}
+	}()
+
+	connector, conn, closer, err = peer.Dial(peer.DialOptions{
+		Protocol: m.Protocol,
+		Addr:     fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort),
+		TLS:      s.config.PeerTLSConfig,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "dialing peer")
+		return
+	}
+
+	_, err = conn.Write(buf)
+	if err != nil {
+		err = errors.Wrap(err, "writing handshake")
+		return
+	}
 
 	err = s.peers.NewPeer(s.parentCtx, m.Protocol, multiplexer.Config{
 		Logger:    logger,
-		Conn:      conn,
+		Conn:      connector,
 		Peer:      m.PeerID,
 		Initiator: true,
 		Wait:      time.Second,

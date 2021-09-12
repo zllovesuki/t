@@ -30,7 +30,8 @@ type Server struct {
 	clients            *state.PeerMap
 	peerGraph          *state.PeerGraph
 	messaging          *messaging.Channel
-	peerListner        net.Listener
+	peerTLSListener    net.Listener
+	peerQUICListener   quic.Listener
 	clientTLSListener  net.Listener
 	clientQuicListener quic.Listener
 	gossip             *memberlist.Memberlist
@@ -52,9 +53,9 @@ func New(conf Config) (*Server, error) {
 	rand.Seed(time.Now().UnixNano())
 	peerPort := conf.Multiplexer.Peer
 	if peerPort == 0 {
-		addr, ok := conf.PeerListener.Addr().(*net.TCPAddr)
+		addr, ok := conf.PeerTLSListener.Addr().(*net.TCPAddr)
 		if !ok {
-			return nil, errors.New("peerListener is not TLS/TCP")
+			return nil, errors.New("peerTLSListener is not TLS/TCP")
 		}
 		peerPort = addr.Port
 	}
@@ -70,7 +71,7 @@ func New(conf Config) (*Server, error) {
 			ConnectIP:   conf.Network.AdvertiseAddr,
 			ConnectPort: uint64(peerPort),
 			PeerID:      self,
-			Protocol:    multiplexer.MplexProtocol, // peers connect to each other using Mplex by default
+			Protocol:    multiplexer.Protocol(conf.Multiplexer.Protocol),
 		},
 		parentCtx:          conf.Context,
 		config:             conf,
@@ -79,7 +80,8 @@ func New(conf Config) (*Server, error) {
 		clients:            cMap,
 		peerGraph:          pg,
 		messaging:          messaging.New(conf.Logger, self),
-		peerListner:        conf.PeerListener,
+		peerTLSListener:    conf.PeerTLSListener,
+		peerQUICListener:   conf.PeerQUICListener,
 		clientTLSListener:  conf.ClientTLSListener,
 		clientQuicListener: conf.ClientQUICListener,
 		logger:             conf.Logger,
@@ -147,12 +149,22 @@ func (s *Server) ListenForPeers() {
 	}()
 	go func() {
 		for {
-			conn, err := s.peerListner.Accept()
+			conn, err := s.peerTLSListener.Accept()
 			if err != nil {
 				s.logger.Error("accepting TCP connection from peers", zap.Error(err))
 				return
 			}
-			go s.peerHandshake(conn)
+			go s.peerTLSHandshake(conn)
+		}
+	}()
+	go func() {
+		for {
+			sess, err := s.peerQUICListener.Accept(s.parentCtx)
+			if err != nil {
+				s.logger.Error("accepting quic connection from peers", zap.Error(err))
+				return
+			}
+			go s.peerQUICHandshake(sess)
 		}
 	}()
 	go s.handleMembershipChange()
@@ -169,7 +181,7 @@ func (s *Server) ListenForClients() {
 				s.logger.Error("accepting tls connection from clients", zap.Error(err))
 				return
 			}
-			go s.tlsHandshake(conn)
+			go s.clientTLSHandshake(conn)
 		}
 	}()
 	go func() {
@@ -179,7 +191,7 @@ func (s *Server) ListenForClients() {
 				s.logger.Error("accepting quic connections from clients", zap.Error(err))
 				return
 			}
-			go s.quicHandshake(sess)
+			go s.clientQUICHandshake(sess)
 		}
 	}()
 	go s.handleClientEvents()

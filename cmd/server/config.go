@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/zllovesuki/t/acme"
+	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/server"
 
@@ -51,6 +52,9 @@ func getConfig(path string) (*ConfigBundle, error) {
 	cfg.MapStruct("gossip", &bundle.Gossip)
 	bundle.ACME.Domain = "*." + bundle.Web.Domain
 	bundle.ACME.RootZone = bundle.RFC2136.Zone
+	if bundle.Multiplexer.Protocol == multiplexer.UnknownProtocol {
+		bundle.Multiplexer.Protocol = multiplexer.QUICProtocol
+	}
 
 	return &bundle, nil
 }

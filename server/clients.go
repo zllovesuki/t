@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (s *Server) quicHandshake(sess quic.Session) {
+func (s *Server) clientQUICHandshake(sess quic.Session) {
 	ctx, cancel := context.WithTimeout(s.parentCtx, time.Second*3)
 	defer cancel()
 
@@ -37,13 +37,10 @@ func (s *Server) quicHandshake(sess quic.Session) {
 	}
 	defer conn.Close()
 
-	err = s.clientNegotiation(s.logger, sess, &peer.QuicConn{
-		Stream:  conn,
-		Session: sess,
-	}, multiplexer.AcceptableQUICProtocols)
+	err = s.clientNegotiation(s.logger, sess, peer.WrapQUIC(sess, conn), multiplexer.AcceptableQUICProtocols)
 }
 
-func (s *Server) tlsHandshake(conn net.Conn) {
+func (s *Server) clientTLSHandshake(conn net.Conn) {
 	var err error
 	logger := s.logger
 	defer func() {
@@ -143,7 +140,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 
 func (s *Server) handleClientEvents() {
 	for peer := range s.clients.Notify() {
-		s.logger.Info("client destination registered", zap.Uint64("peerID", peer.Peer()), zap.String("remote", peer.Addr().String()))
+		s.logger.Info("client destination registered", zap.Uint64("peerID", peer.Peer()), zap.String("remote", peer.Addr().String()), zap.String("protocol", peer.Protocol().String()))
 		// update our peer graph with the client as this may block with
 		// many clients connecting
 		go func(p multiplexer.Peer) {

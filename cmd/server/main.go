@@ -12,10 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
+	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/server"
@@ -115,6 +115,7 @@ func main() {
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkPeerSAN("t_Peer"),
+		NextProtos:               []string{"multiplexer"},
 	}
 
 	clientTLSConfig := &tls.Config{
@@ -141,28 +142,29 @@ func main() {
 	clientAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Client)
 	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *webPort)
 
-	peerListener, err := tls.Listen("tcp", peerAddr, peerTLSConfig)
+	peerTLSListener, err := tls.Listen("tcp", peerAddr, peerTLSConfig)
 	if err != nil {
-		logger.Fatal("listening for peer connection", zap.Error(err))
+		logger.Fatal("listening for peer tls connection", zap.Error(err))
 	}
-	defer peerListener.Close()
+	defer peerTLSListener.Close()
 
-	clientListener, err := tls.Listen("tcp", clientAddr, clientTLSConfig)
+	peerQuicListener, err := quic.ListenAddr(peerAddr, peerTLSConfig, peer.QUICConfig())
 	if err != nil {
-		logger.Fatal("listening for client connection", zap.Error(err))
+		logger.Fatal("listening for peer quic connection", zap.Error(err))
 	}
-	defer clientListener.Close()
+	defer peerQuicListener.Close()
 
-	quicListener, err := quic.ListenAddr(clientAddr, clientTLSConfig, &quic.Config{
-		KeepAlive:               true,
-		HandshakeIdleTimeout:    time.Second * 3,
-		MaxIdleTimeout:          time.Second * 15,
-		DisablePathMTUDiscovery: true,
-	})
+	clientTLSListener, err := tls.Listen("tcp", clientAddr, clientTLSConfig)
+	if err != nil {
+		logger.Fatal("listening for client tls connection", zap.Error(err))
+	}
+	defer clientTLSListener.Close()
+
+	clientQuicListener, err := quic.ListenAddr(clientAddr, clientTLSConfig, peer.QUICConfig())
 	if err != nil {
 		logger.Fatal("listening for quic connection", zap.Error(err))
 	}
-	defer quicListener.Close()
+	defer clientQuicListener.Close()
 
 	gatewayListener, err := tls.Listen("tcp", gatewayAddr, gatwayTLSConfig)
 	if err != nil {
@@ -181,10 +183,11 @@ func main() {
 		Context:            ctx,
 		Logger:             logger,
 		Network:            bundle.Network,
-		PeerListener:       peerListener,
+		PeerTLSListener:    peerTLSListener,
+		PeerQUICListener:   peerQuicListener,
 		PeerTLSConfig:      peerTLSConfig,
-		ClientTLSListener:  clientListener,
-		ClientQUICListener: quicListener,
+		ClientTLSListener:  clientTLSListener,
+		ClientQUICListener: clientQuicListener,
 		Multiplexer:        bundle.Multiplexer,
 		Gossip:             bundle.Gossip,
 		CertManager:        certManager,
