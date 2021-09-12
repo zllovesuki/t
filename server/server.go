@@ -15,31 +15,33 @@ import (
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type Server struct {
-	parentCtx      context.Context
-	logger         *zap.Logger
-	config         Config
-	id             uint64
-	meta           Meta
-	peers          *state.PeerMap
-	clients        *state.PeerMap
-	peerGraph      *state.PeerGraph
-	messaging      *messaging.Channel
-	peerListner    net.Listener
-	clientListener net.Listener
-	gossip         *memberlist.Memberlist
-	gossipCfg      *memberlist.Config
-	broadcasts     *memberlist.TransmitLimitedQueue
-	updatesCh      chan *state.ConnectedClients
-	currentLeader  *uint64
-	membershipCh   chan struct{}
-	startLeader    chan struct{}
-	stopLeader     chan struct{}
-	certManager    *acme.CertManager
+	parentCtx          context.Context
+	logger             *zap.Logger
+	config             Config
+	id                 uint64
+	meta               Meta
+	peers              *state.PeerMap
+	clients            *state.PeerMap
+	peerGraph          *state.PeerGraph
+	messaging          *messaging.Channel
+	peerListner        net.Listener
+	clientTLSListener  net.Listener
+	clientQuicListener quic.Listener
+	gossip             *memberlist.Memberlist
+	gossipCfg          *memberlist.Config
+	broadcasts         *memberlist.TransmitLimitedQueue
+	updatesCh          chan *state.ConnectedClients
+	currentLeader      *uint64
+	membershipCh       chan struct{}
+	startLeader        chan struct{}
+	stopLeader         chan struct{}
+	certManager        *acme.CertManager
 }
 
 func New(conf Config) (*Server, error) {
@@ -70,22 +72,23 @@ func New(conf Config) (*Server, error) {
 			PeerID:      self,
 			Protocol:    multiplexer.MplexProtocol, // peers connect to each other using Mplex by default
 		},
-		parentCtx:      conf.Context,
-		config:         conf,
-		id:             self,
-		peers:          pMap,
-		clients:        cMap,
-		peerGraph:      pg,
-		messaging:      messaging.New(conf.Logger, self),
-		peerListner:    conf.PeerListener,
-		clientListener: conf.ClientListener,
-		logger:         conf.Logger,
-		updatesCh:      make(chan *state.ConnectedClients, 16),
-		currentLeader:  new(uint64),
-		membershipCh:   make(chan struct{}, 1),
-		startLeader:    make(chan struct{}, 1),
-		stopLeader:     make(chan struct{}, 1),
-		certManager:    conf.CertManager,
+		parentCtx:          conf.Context,
+		config:             conf,
+		id:                 self,
+		peers:              pMap,
+		clients:            cMap,
+		peerGraph:          pg,
+		messaging:          messaging.New(conf.Logger, self),
+		peerListner:        conf.PeerListener,
+		clientTLSListener:  conf.ClientTLSListener,
+		clientQuicListener: conf.ClientQUICListener,
+		logger:             conf.Logger,
+		updatesCh:          make(chan *state.ConnectedClients, 16),
+		currentLeader:      new(uint64),
+		membershipCh:       make(chan struct{}, 1),
+		startLeader:        make(chan struct{}, 1),
+		stopLeader:         make(chan struct{}, 1),
+		certManager:        conf.CertManager,
 		broadcasts: &memberlist.TransmitLimitedQueue{
 			NumNodes: func() int {
 				// include ourself
@@ -161,12 +164,22 @@ func (s *Server) ListenForPeers() {
 func (s *Server) ListenForClients() {
 	go func() {
 		for {
-			conn, err := s.clientListener.Accept()
+			conn, err := s.clientTLSListener.Accept()
 			if err != nil {
-				s.logger.Error("accepting TCP connection from clients", zap.Error(err))
+				s.logger.Error("accepting tls connection from clients", zap.Error(err))
 				return
 			}
-			go s.clientHandshake(conn)
+			go s.tlsHandshake(conn)
+		}
+	}()
+	go func() {
+		for {
+			sess, err := s.clientQuicListener.Accept(s.parentCtx)
+			if err != nil {
+				s.logger.Error("accepting quic connections from clients", zap.Error(err))
+				return
+			}
+			go s.quicHandshake(sess)
 		}
 	}()
 	go s.handleClientEvents()

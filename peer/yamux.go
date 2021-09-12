@@ -62,9 +62,9 @@ func NewYamuxPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	cfg.LogOutput = &zapWriter{logger: logger}
 
 	if config.Initiator {
-		session, err = yamux.Client(config.Conn, cfg)
+		session, err = yamux.Client(config.Conn.(net.Conn), cfg)
 	} else {
-		session, err = yamux.Server(config.Conn, cfg)
+		session, err = yamux.Server(config.Conn.(net.Conn), cfg)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
@@ -114,7 +114,7 @@ func (p *Yamux) Null(ctx context.Context) {
 }
 
 func (p *Yamux) Addr() net.Addr {
-	return p.config.Conn.RemoteAddr()
+	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
 func (p *Yamux) streamHandshake(c context.Context, conn net.Conn) {
@@ -208,7 +208,7 @@ func (p *Yamux) Bye() error {
 	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
 		close(p.incoming)
 		p.session.Close()
-		p.config.Conn.Close()
+		p.config.Conn.(net.Conn).Close()
 	}
 	return nil
 }

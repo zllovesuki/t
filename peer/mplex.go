@@ -34,7 +34,7 @@ func NewMplexPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 		return nil, err
 	}
 
-	session := multiplex.NewMultiplex(config.Conn, config.Initiator)
+	session := multiplex.NewMultiplex(config.Conn.(net.Conn), config.Initiator)
 	logger := config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator))
 
 	return &Mplex{
@@ -79,7 +79,7 @@ func (p *Mplex) Null(ctx context.Context) {
 }
 
 func (p *Mplex) Addr() net.Addr {
-	return p.config.Conn.RemoteAddr()
+	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
 type mplexConn struct {
@@ -113,7 +113,7 @@ func (p *Mplex) streamHandshake(c context.Context, conn *multiplex.Stream) {
 	p.incoming <- multiplexer.LinkConnection{
 		Link: s,
 		Conn: &mplexConn{
-			parentConn: p.config.Conn,
+			parentConn: p.config.Conn.(net.Conn),
 			Stream:     conn,
 		},
 	}
@@ -148,7 +148,7 @@ func (p *Mplex) Messaging(ctx context.Context) (net.Conn, error) {
 	}
 	return &mplexConn{
 		Stream:     n,
-		parentConn: p.config.Conn,
+		parentConn: p.config.Conn.(net.Conn),
 	}, nil
 }
 
@@ -169,7 +169,7 @@ func (p *Mplex) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, er
 
 	return &mplexConn{
 		Stream:     n,
-		parentConn: p.config.Conn,
+		parentConn: p.config.Conn.(net.Conn),
 	}, nil
 }
 
@@ -196,7 +196,7 @@ func (p *Mplex) Bye() error {
 	if atomic.CompareAndSwapInt32(p.closed, 0, 1) {
 		close(p.incoming)
 		p.session.Close()
-		p.config.Conn.Close()
+		p.config.Conn.(net.Conn).Close()
 	}
 	return nil
 }

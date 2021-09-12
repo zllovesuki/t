@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
@@ -19,6 +20,7 @@ import (
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/server"
 
+	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
 )
 
@@ -122,6 +124,7 @@ func main() {
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
+		NextProtos:               []string{"multiplexer"},
 	}
 
 	gatwayTLSConfig := &tls.Config{
@@ -150,6 +153,16 @@ func main() {
 	}
 	defer clientListener.Close()
 
+	quicListener, err := quic.ListenAddr(clientAddr, clientTLSConfig, &quic.Config{
+		KeepAlive:            true,
+		HandshakeIdleTimeout: time.Second * 3,
+		MaxIdleTimeout:       time.Second * 15,
+	})
+	if err != nil {
+		logger.Fatal("listening for quic connection", zap.Error(err))
+	}
+	defer quicListener.Close()
+
 	gatewayListener, err := tls.Listen("tcp", gatewayAddr, gatwayTLSConfig)
 	if err != nil {
 		logger.Fatal("listening for gateway connection", zap.Error(err))
@@ -164,17 +177,18 @@ func main() {
 		domain = fmt.Sprintf("%s:%d", domain, *webPort)
 	}
 	s, err := server.New(server.Config{
-		Context:        ctx,
-		Logger:         logger,
-		Network:        bundle.Network,
-		PeerListener:   peerListener,
-		PeerTLSConfig:  peerTLSConfig,
-		ClientListener: clientListener,
-		Multiplexer:    bundle.Multiplexer,
-		Gossip:         bundle.Gossip,
-		CertManager:    certManager,
-		Debug:          *debug,
-		Domain:         domain,
+		Context:            ctx,
+		Logger:             logger,
+		Network:            bundle.Network,
+		PeerListener:       peerListener,
+		PeerTLSConfig:      peerTLSConfig,
+		ClientTLSListener:  clientListener,
+		ClientQUICListener: quicListener,
+		Multiplexer:        bundle.Multiplexer,
+		Gossip:             bundle.Gossip,
+		CertManager:        certManager,
+		Debug:              *debug,
+		Domain:             domain,
 	})
 	if err != nil {
 		logger.Fatal("setting up multiplexer server", zap.Error(err))
