@@ -18,12 +18,11 @@ func init() {
 	multiplexer.Register(multiplexer.QUICProtocol, NewQuicPeer)
 }
 
-func QUICConfig() *quic.Config {
+func quicConfigCommon() *quic.Config {
 	return &quic.Config{
-		KeepAlive:               true,
-		HandshakeIdleTimeout:    time.Second * 3,
-		MaxIdleTimeout:          time.Second * 15,
-		DisablePathMTUDiscovery: true,
+		KeepAlive:            true,
+		HandshakeIdleTimeout: time.Second * 3,
+		MaxIdleTimeout:       time.Second * 15,
 	}
 }
 
