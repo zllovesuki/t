@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
@@ -97,22 +96,22 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proposedProtocol := multiplexer.Protocol(*protocol)
-
 	var connector interface{}
 	var conn net.Conn
 	var link multiplexer.Link
 	var g shared.GeneratedName
 
+	proposedProtocol := multiplexer.Protocol(*protocol)
+	dialer, err := multiplexer.Dialer(proposedProtocol)
+	if err != nil {
+		logger.Fatal("selecting peer dialer", zap.Error(err))
+	}
+
 	logger.Info("Protocol proposal", zap.String("protocol", proposedProtocol.String()), zap.String("clientVersion", Version))
 
-	connector, conn, _, err = peer.Dial(peer.DialOptions{
-		Protocol: proposedProtocol,
-		Addr:     peerTarget,
-		TLS: &tls.Config{
-			InsecureSkipVerify: *debug,
-			NextProtos:         []string{shared.ALPNProto},
-		},
+	connector, conn, _, err = dialer(peerTarget, &tls.Config{
+		InsecureSkipVerify: *debug,
+		NextProtos:         []string{shared.ALPNProto},
 	})
 	if err != nil {
 		logger.Fatal("connecting to peer", zap.Error(err))

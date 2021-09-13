@@ -84,7 +84,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		return
 	}
 
-	_, err = multiplexer.Get(link.Protocol)
+	_, err = multiplexer.New(link.Protocol)
 	if err != nil {
 		err = errors.Wrap(err, "negotiating protocol with client")
 		return

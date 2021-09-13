@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"time"
@@ -14,7 +15,8 @@ import (
 )
 
 func init() {
-	multiplexer.Register(multiplexer.MplexProtocol, NewMplexPeer)
+	multiplexer.RegisterConstructor(multiplexer.MplexProtocol, NewMplexPeer)
+	multiplexer.RegisterDialer(multiplexer.MplexProtocol, dialMplex)
 }
 
 // Mplex is a Peer implementation using libp2p's mplex
@@ -26,6 +28,10 @@ type Mplex struct {
 }
 
 var _ multiplexer.Peer = &Mplex{}
+
+func dialMplex(addr string, t *tls.Config) (interface{}, net.Conn, func(), error) {
+	return dialYamux(addr, t)
+}
 
 func NewMplexPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	if err := config.Validate(); err != nil {

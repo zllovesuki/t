@@ -86,7 +86,7 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 		return
 	}
 
-	_, err = multiplexer.Get(link.Protocol)
+	_, err = multiplexer.New(link.Protocol)
 	if err != nil {
 		err = errors.Wrap(err, "negotiating protocol with peer")
 		return

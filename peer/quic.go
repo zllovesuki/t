@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"sync/atomic"
@@ -15,7 +16,8 @@ import (
 )
 
 func init() {
-	multiplexer.Register(multiplexer.QUICProtocol, NewQuicPeer)
+	multiplexer.RegisterConstructor(multiplexer.QUICProtocol, NewQuicPeer)
+	multiplexer.RegisterDialer(multiplexer.QUICProtocol, dialQuic)
 }
 
 func quicConfigCommon() *quic.Config {
@@ -36,6 +38,26 @@ type QUIC struct {
 }
 
 var _ multiplexer.Peer = &QUIC{}
+
+func dialQuic(addr string, t *tls.Config) (connector interface{}, hs net.Conn, closer func(), err error) {
+	var sess quic.Session
+	sess, err = quic.DialAddr(addr, t.Clone(), QUICConfig())
+	if err != nil {
+		err = errors.Wrap(err, "opening quic session")
+		return
+	}
+	closer = func() {
+		sess.CloseWithError(quic.ApplicationErrorCode(0), "")
+	}
+	conn, sErr := sess.OpenStream()
+	if sErr != nil {
+		err = errors.Wrap(sErr, "opening quic handshake connection")
+		return
+	}
+	connector = sess
+	hs = WrapQUIC(sess, conn)
+	return
+}
 
 func NewQuicPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	if err := config.Validate(); err != nil {

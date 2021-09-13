@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"strings"
@@ -15,7 +16,8 @@ import (
 )
 
 func init() {
-	multiplexer.Register(multiplexer.YamuxProtocol, NewYamuxPeer)
+	multiplexer.RegisterConstructor(multiplexer.YamuxProtocol, NewYamuxPeer)
+	multiplexer.RegisterDialer(multiplexer.YamuxProtocol, dialYamux)
 }
 
 // Yamux is a Peer implementation using hashicorp's Yamux
@@ -43,6 +45,22 @@ func (z *zapWriter) Write(b []byte) (int, error) {
 		z.logger.Error(msg)
 	}
 	return len(b), nil
+}
+
+func dialYamux(addr string, t *tls.Config) (connector interface{}, hs net.Conn, closer func(), err error) {
+	conn, sErr := tls.DialWithDialer(&net.Dialer{
+		Timeout: time.Second * 3,
+	}, "tcp", addr, t.Clone())
+	if sErr != nil {
+		err = errors.Wrap(sErr, "opening tls connection")
+		return
+	}
+	closer = func() {
+		conn.Close()
+	}
+	connector = conn
+	hs = conn
+	return
 }
 
 func NewYamuxPeer(config multiplexer.Config) (multiplexer.Peer, error) {

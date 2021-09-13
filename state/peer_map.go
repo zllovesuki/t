@@ -45,7 +45,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, protocol multiplexer.Protocol, co
 		return ErrSessionAlreadyEstablished
 	}
 
-	c, err := multiplexer.Get(protocol)
+	c, err := multiplexer.New(protocol)
 	if err != nil {
 		return err
 	}

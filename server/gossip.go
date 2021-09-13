@@ -8,7 +8,6 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
@@ -229,11 +228,13 @@ func (s *Server) connectPeer(m Meta) {
 		}
 	}()
 
-	connector, conn, closer, err = peer.Dial(peer.DialOptions{
-		Protocol: m.Protocol,
-		Addr:     fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort),
-		TLS:      s.config.PeerTLSConfig,
-	})
+	dialer, err := multiplexer.Dialer(m.Protocol)
+	if err != nil {
+		err = errors.Wrap(err, "getting dialer")
+		return
+	}
+
+	connector, conn, closer, err = dialer(fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort), s.config.PeerTLSConfig)
 	if err != nil {
 		err = errors.Wrap(err, "dialing peer")
 		return
