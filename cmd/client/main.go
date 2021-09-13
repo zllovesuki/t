@@ -74,6 +74,7 @@ func main() {
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: *debug,
+					NextProtos:         []string{"http/1.1"},
 				},
 			},
 			Timeout: time.Second * 5,
@@ -110,7 +111,7 @@ func main() {
 		Addr:     peerTarget,
 		TLS: &tls.Config{
 			InsecureSkipVerify: *debug,
-			NextProtos:         []string{"multiplexer"},
+			NextProtos:         []string{shared.ALPNProto},
 		},
 	})
 	if err != nil {

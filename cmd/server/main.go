@@ -19,7 +19,9 @@ import (
 	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
+	"github.com/zllovesuki/t/reuse"
 	"github.com/zllovesuki/t/server"
+	"github.com/zllovesuki/t/shared"
 
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
@@ -111,59 +113,69 @@ func main() {
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkPeerSAN("t_Peer"),
-		NextProtos:               []string{"multiplexer"},
+		NextProtos:               []string{shared.ALPNProto},
 	}
 
 	gatwayTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
 		GetCertificate:           certManager.GetCertificatesFunc,
 		ClientAuth:               tls.NoClientCert,
-		NextProtos:               []string{"http/1.1", "multiplexer"},
 		MinVersion:               tls.VersionTLS11,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
+		NextProtos:               []string{"http/1.1", shared.ALPNProto},
 	}
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
 	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *gatewayPort)
 
-	peerTLSListener, err := tls.Listen("tcp", peerAddr, peerTLSConfig)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	qp, err := getReusePacketConn(ctx, "udp", peerAddr)
+	if err != nil {
+		logger.Fatal("setting up for peer quic connection", zap.Error(err))
+	}
+	peerQuicListener, err := quic.Listen(qp, peerTLSConfig, peer.QUICConfig())
+	if err != nil {
+		logger.Fatal("listening for peer quic connection", zap.Error(err))
+	}
+	defer peerQuicListener.Close()
+
+	qc, err := getReusePacketConn(ctx, "udp", gatewayAddr)
+	if err != nil {
+		logger.Fatal("setting up for client quic connection", zap.Error(err))
+	}
+	clientQuicListener, err := quic.Listen(qc, gatwayTLSConfig, peer.QUICConfig())
+	if err != nil {
+		logger.Fatal("listening for client quic connection", zap.Error(err))
+	}
+	defer clientQuicListener.Close()
+
+	p, err := getReuseListener(ctx, "tcp", peerAddr)
 	if err != nil {
 		logger.Fatal("listening for peer tls connection", zap.Error(err))
 	}
+	peerTLSListener := tls.NewListener(p, peerTLSConfig)
 	defer peerTLSListener.Close()
+
+	g, err := getReuseListener(ctx, "tcp", gatewayAddr)
+	if err != nil {
+		logger.Fatal("listening for gateway connection", zap.Error(err))
+	}
+	gMux := tls.NewListener(g, gatwayTLSConfig)
+	defer gMux.Close()
+
+	alpnMux := gateway.NewALPNMux(logger, gMux)
+
+	clientTLSListener := alpnMux.For(shared.ALPNProto)
+	gatewayListener := alpnMux.For("http/1.1", "")
 
 	if bundle.Multiplexer.Peer == 0 {
 		addr, _ := peerTLSListener.Addr().(*net.TCPAddr)
 		peerAddr = fmt.Sprintf("%s:%d", bundle.Network.BindAddr, addr.Port)
 		bundle.Multiplexer.Peer = addr.Port
 	}
-
-	peerQuicListener, err := quic.ListenAddr(peerAddr, peerTLSConfig, peer.QUICConfig())
-	if err != nil {
-		logger.Fatal("listening for peer quic connection", zap.Error(err))
-	}
-	defer peerQuicListener.Close()
-
-	clientQuicListener, err := quic.ListenAddr(gatewayAddr, gatwayTLSConfig, peer.QUICConfig())
-	if err != nil {
-		logger.Fatal("listening for quic connection", zap.Error(err))
-	}
-	defer clientQuicListener.Close()
-
-	gMux, err := tls.Listen("tcp", gatewayAddr, gatwayTLSConfig)
-	if err != nil {
-		logger.Fatal("listening for gateway connection", zap.Error(err))
-	}
-	defer gMux.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	alpnMux := gateway.NewALPNMux(logger, gMux)
-
-	clientTLSListener := alpnMux.For("multiplexer")
-	gatewayListener := alpnMux.For("http/1.1", "")
 
 	domain := bundle.Web.Domain
 	if *gatewayPort != 443 {
@@ -195,7 +207,7 @@ func main() {
 		zap.String("serverVersion", Version),
 	)
 
-	g, err := gateway.New(gateway.GatewayConfig{
+	gw, err := gateway.New(gateway.GatewayConfig{
 		Logger:      logger,
 		Multiplexer: s,
 		Listener:    gatewayListener,
@@ -213,10 +225,24 @@ func main() {
 	s.ListenForClients()
 
 	go gateway.RedirectHTTP(logger, bundle.Network.BindAddr, *gatewayPort)
-	go g.Start(ctx)
+	go gw.Start(ctx)
 	go profiler.StartProfiler(*profile)
 	go alpnMux.Serve(ctx)
 
 	sig := <-sigs
 	logger.Info("terminating on signal", zap.String("signal", sig.String()))
+}
+
+func getReuseListener(ctx context.Context, network, address string) (net.Listener, error) {
+	cfg := &net.ListenConfig{
+		Control: reuse.Control,
+	}
+	return cfg.Listen(ctx, network, address)
+}
+
+func getReusePacketConn(ctx context.Context, network, address string) (net.PacketConn, error) {
+	cfg := &net.ListenConfig{
+		Control: reuse.Control,
+	}
+	return cfg.ListenPacket(ctx, network, address)
 }

@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sethvargo/go-diceware v0.2.1
 	go.uber.org/zap v1.19.1
+	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c
 )
 
 replace github.com/hashicorp/memberlist => github.com/miragespace/memberlist v0.2.5-0.20210723090033-7b76c3050af2
