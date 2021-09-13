@@ -22,10 +22,7 @@ var _ net.Listener = &protoListener{}
 
 func (p *protoListener) Accept() (net.Conn, error) {
 	select {
-	case conn, ok := <-p.c:
-		if !ok {
-			return nil, net.ErrClosed
-		}
+	case conn := <-p.c:
 		return conn, nil
 	case <-p.d:
 		return nil, net.ErrClosed
