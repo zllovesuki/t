@@ -80,9 +80,11 @@ func (a *ALPN) Serve(ctx context.Context) {
 	}
 }
 
-func (a *ALPN) For(proto string) net.Listener {
+func (a *ALPN) For(protos ...string) net.Listener {
 	ch := make(chan net.Conn, 32)
-	a.protos.Store(proto, ch)
+	for _, proto := range protos {
+		a.protos.Store(proto, ch)
+	}
 	return &protoListener{
 		l: a.listener,
 		c: ch,

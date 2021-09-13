@@ -163,7 +163,7 @@ func main() {
 	alpnMux := gateway.NewALPNMux(logger, gMux)
 
 	clientTLSListener := alpnMux.For("multiplexer")
-	gatewayListener := alpnMux.For("http/1.1")
+	gatewayListener := alpnMux.For("http/1.1", "")
 
 	domain := bundle.Web.Domain
 	if *gatewayPort != 443 {
