@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/zllovesuki/t/acme"
@@ -26,6 +27,7 @@ type Server struct {
 	config             Config
 	id                 uint64
 	meta               Meta
+	metaBytes          atomic.Value
 	peers              *state.PeerMap
 	clients            *state.PeerMap
 	peerGraph          *state.PeerGraph
@@ -135,6 +137,10 @@ func New(conf Config) (*Server, error) {
 
 	s.gossipCfg = c
 
+	// since meta is read-only, storing the bytes and read it atomically
+	// from gossip should help with allocation
+	s.metaBytes.Store(s.meta.Pack())
+
 	return s, nil
 }
 
@@ -200,10 +206,6 @@ func (s *Server) ListenForClients() {
 
 func (s *Server) PeerID() uint64 {
 	return s.id
-}
-
-func (s *Server) Meta() []byte {
-	return s.meta.Pack()
 }
 
 func (s *Server) findPath(link multiplexer.Link) multiplexer.Peer {

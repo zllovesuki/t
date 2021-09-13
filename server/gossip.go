@@ -114,7 +114,7 @@ func (s *Server) NotifyUpdate(node *memberlist.Node) {
 var _ memberlist.Delegate = &Server{}
 
 func (s *Server) NodeMeta(limit int) []byte {
-	return s.Meta()
+	return s.metaBytes.Load().([]byte)
 }
 
 type ACMESynchronization struct {
