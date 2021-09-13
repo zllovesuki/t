@@ -3,6 +3,8 @@ web:
   # something like: dramatize-detergent-donator-mutable-election.tunnel.example.com
   # note: this domain name must be part of the acme.provider.rfc2136.zone below
   domain: tunnel.example.com
+  # the gateway port can be specified with -gatewayPort (default to 443). Note that
+  # this port is used for both visitors and the clients, and for both TCP and UDP
 
 # certificate for the gateway and client connection will be issued by Let's Encrypt.
 # until a certificate is issued, gateway and client will not be usable. However,
@@ -43,8 +45,6 @@ multiplexer:
   # if left to 0, a random port will be used. Peers will be discovered via Gossip
   # if you are running in docker, it's better to have a defined port so you can expose it
   peer: 0
-  # which port to listen for client's multiplexer connection
-  client: 9000
   # protocol for inter-peer communication. 1: Yamux, 2: Mplex, 3: QUIC
   # client can specify the protocol when connecting with -protocol argument
   protocol: 3

@@ -7,9 +7,7 @@ import (
 	"net"
 	"net/http"
 	"text/template"
-	"time"
 
-	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/server"
 
 	"github.com/pkg/errors"
@@ -21,7 +19,6 @@ type GatewayConfig struct {
 	Multiplexer *server.Server
 	Listener    net.Listener
 	RootDomain  string
-	ClientPort  int
 	GatewayPort int
 }
 
@@ -56,7 +53,7 @@ func New(conf GatewayConfig) (*Gateway, error) {
 			ch:     make(chan net.Conn, 1024),
 		},
 		apexServer: &apexServer{
-			clientPort: conf.ClientPort,
+			clientPort: conf.GatewayPort,
 			hostname:   conf.RootDomain,
 			host:       d,
 			mdTmpl:     md,
@@ -82,18 +79,6 @@ func (g *Gateway) Start(ctx context.Context) {
 }
 
 func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
-	conn.SetDeadline(time.Now().Add(time.Second * 5))
-	err := conn.Handshake()
-	if err != nil {
-		g.Logger.Debug("tls handshake failed", zap.Error(err), zap.String("remoteAddr", conn.RemoteAddr().String()))
-		conn.Close()
-		profiler.GatewayRequests.WithLabelValues("error", "handshake").Add(1)
-		return
-	}
-	conn.SetDeadline(time.Time{})
-
-	profiler.GatewayRequests.WithLabelValues("success", "handshake").Add(1)
-
 	cs := conn.ConnectionState()
 	switch cs.ServerName {
 	case g.RootDomain:

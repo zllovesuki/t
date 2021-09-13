@@ -15,7 +15,6 @@ import (
 
 type MultiplexerConfig struct {
 	Peer        int
-	Client      int
 	Protocol    multiplexer.Protocol
 	RespondOnly bool
 }

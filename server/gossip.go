@@ -118,6 +118,7 @@ func (s *Server) NodeMeta(limit int) []byte {
 }
 
 type ACMESynchronization struct {
+	From        uint64
 	AccountFile *acme.AccountFile
 	Bundle      *acme.Bundle
 }
@@ -136,6 +137,7 @@ func (s *Server) LocalState(join bool) []byte {
 			return nil
 		}
 		as := ACMESynchronization{
+			From:        s.PeerID(),
 			AccountFile: af,
 			Bundle:      bundle,
 		}
@@ -166,6 +168,10 @@ func (s *Server) MergeRemoteState(buf []byte, join bool) {
 		}
 		if as.AccountFile == nil || as.Bundle == nil {
 			s.logger.Info("gossip: ignoring incomplete acme synchronization")
+			return
+		}
+		if as.From == s.PeerID() {
+			s.logger.Info("gossip: ignoring acme synchronization from ourself")
 			return
 		}
 		s.logger.Info("gossip: received acme synchronization details")

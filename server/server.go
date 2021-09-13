@@ -54,13 +54,6 @@ func New(conf Config) (*Server, error) {
 
 	rand.Seed(time.Now().UnixNano())
 	peerPort := conf.Multiplexer.Peer
-	if peerPort == 0 {
-		addr, ok := conf.PeerTLSListener.Addr().(*net.TCPAddr)
-		if !ok {
-			return nil, errors.New("peerTLSListener is not TLS/TCP")
-		}
-		peerPort = addr.Port
-	}
 
 	self := rand.Uint64()
 

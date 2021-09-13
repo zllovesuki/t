@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,17 +30,15 @@ var Version = "dev"
 const (
 	defaultPeerPort   = 1111
 	defaultGossipPort = 12345
-	defaultClientPort = 9000
 )
 
 var (
-	profile    = flag.String("profiler", "127.0.0.1:9090", "where the profiler should listen for connections")
-	configPath = flag.String("config", "config.yaml", "path to the config.yaml")
-	peerPort   = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
-	gossipPort = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
-	clientPort = flag.Int("clientPort", defaultClientPort, "override config clientPort")
-	webPort    = flag.Int("webPort", 443, "gateway port for forwarding to clients")
-	debug      = flag.Bool("debug", false, "enable verbose logging and disable ACME functions")
+	gatewayPort = flag.Int("gatewayPort", 443, "port for accepting clients and visitors")
+	profile     = flag.String("profiler", "127.0.0.1:9090", "where the profiler should listen for connections")
+	configPath  = flag.String("config", "config.yaml", "path to the config.yaml")
+	peerPort    = flag.Int("peerPort", defaultPeerPort, "override config peerPort")
+	gossipPort  = flag.Int("gossipPort", defaultGossipPort, "override config gossipPort")
+	debug       = flag.Bool("debug", false, "enable verbose logging and disable ACME functions")
 )
 
 func main() {
@@ -66,9 +65,6 @@ func main() {
 	}
 	if *gossipPort != defaultGossipPort {
 		bundle.Gossip.Port = *gossipPort
-	}
-	if *clientPort != defaultClientPort {
-		bundle.Multiplexer.Client = *clientPort
 	}
 
 	peerCert, err := tls.LoadX509KeyPair(bundle.TLS.Peer.Cert, bundle.TLS.Peer.Key)
@@ -118,29 +114,18 @@ func main() {
 		NextProtos:               []string{"multiplexer"},
 	}
 
-	clientTLSConfig := &tls.Config{
-		Rand:                     rand.Reader,
-		GetCertificate:           certManager.GetCertificatesFunc,
-		ClientAuth:               tls.NoClientCert,
-		MinVersion:               tls.VersionTLS12,
-		PreferServerCipherSuites: true,
-		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
-		NextProtos:               []string{"multiplexer"},
-	}
-
 	gatwayTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
 		GetCertificate:           certManager.GetCertificatesFunc,
 		ClientAuth:               tls.NoClientCert,
-		NextProtos:               []string{"http/1.1"},
+		NextProtos:               []string{"http/1.1", "multiplexer"},
 		MinVersion:               tls.VersionTLS11,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
 	}
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
-	clientAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Client)
-	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *webPort)
+	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *gatewayPort)
 
 	peerTLSListener, err := tls.Listen("tcp", peerAddr, peerTLSConfig)
 	if err != nil {
@@ -148,36 +133,41 @@ func main() {
 	}
 	defer peerTLSListener.Close()
 
+	if bundle.Multiplexer.Peer == 0 {
+		addr, _ := peerTLSListener.Addr().(*net.TCPAddr)
+		peerAddr = fmt.Sprintf("%s:%d", bundle.Network.BindAddr, addr.Port)
+		bundle.Multiplexer.Peer = addr.Port
+	}
+
 	peerQuicListener, err := quic.ListenAddr(peerAddr, peerTLSConfig, peer.QUICConfig())
 	if err != nil {
 		logger.Fatal("listening for peer quic connection", zap.Error(err))
 	}
 	defer peerQuicListener.Close()
 
-	clientTLSListener, err := tls.Listen("tcp", clientAddr, clientTLSConfig)
-	if err != nil {
-		logger.Fatal("listening for client tls connection", zap.Error(err))
-	}
-	defer clientTLSListener.Close()
-
-	clientQuicListener, err := quic.ListenAddr(clientAddr, clientTLSConfig, peer.QUICConfig())
+	clientQuicListener, err := quic.ListenAddr(gatewayAddr, gatwayTLSConfig, peer.QUICConfig())
 	if err != nil {
 		logger.Fatal("listening for quic connection", zap.Error(err))
 	}
 	defer clientQuicListener.Close()
 
-	gatewayListener, err := tls.Listen("tcp", gatewayAddr, gatwayTLSConfig)
+	gMux, err := tls.Listen("tcp", gatewayAddr, gatwayTLSConfig)
 	if err != nil {
 		logger.Fatal("listening for gateway connection", zap.Error(err))
 	}
-	defer gatewayListener.Close()
+	defer gMux.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	alpnMux := gateway.NewALPNMux(logger, gMux)
+
+	clientTLSListener := alpnMux.For("multiplexer")
+	gatewayListener := alpnMux.For("http/1.1")
+
 	domain := bundle.Web.Domain
-	if *webPort != 443 {
-		domain = fmt.Sprintf("%s:%d", domain, *webPort)
+	if *gatewayPort != 443 {
+		domain = fmt.Sprintf("%s:%d", domain, *gatewayPort)
 	}
 	s, err := server.New(server.Config{
 		Context:            ctx,
@@ -198,13 +188,19 @@ func main() {
 		logger.Fatal("setting up multiplexer server", zap.Error(err))
 	}
 
+	logger.Info("multiplexer peer info",
+		zap.String("bindAddr", peerAddr),
+		zap.String("advertiseAddr", fmt.Sprintf("%s:%d", bundle.Network.AdvertiseAddr, bundle.Multiplexer.Peer)),
+		zap.Uint64("PeerID", s.PeerID()),
+		zap.String("serverVersion", Version),
+	)
+
 	g, err := gateway.New(gateway.GatewayConfig{
 		Logger:      logger,
 		Multiplexer: s,
 		Listener:    gatewayListener,
 		RootDomain:  bundle.Web.Domain,
-		ClientPort:  bundle.Multiplexer.Client,
-		GatewayPort: *webPort,
+		GatewayPort: *gatewayPort,
 	})
 	if err != nil {
 		logger.Fatal("setting up gateway server", zap.Error(err))
@@ -216,16 +212,10 @@ func main() {
 	s.ListenForPeers()
 	s.ListenForClients()
 
-	go gateway.RedirectHTTP(logger, bundle.Network.BindAddr, *webPort)
+	go gateway.RedirectHTTP(logger, bundle.Network.BindAddr, *gatewayPort)
 	go g.Start(ctx)
 	go profiler.StartProfiler(*profile)
-
-	logger.Info("peer info",
-		zap.String("bindAddr", peerAddr),
-		zap.String("advertiseAddr", fmt.Sprintf("%s:%d", bundle.Network.AdvertiseAddr, bundle.Multiplexer.Peer)),
-		zap.Uint64("PeerID", s.PeerID()),
-		zap.String("serverVersion", Version),
-	)
+	go alpnMux.Serve(ctx)
 
 	sig := <-sigs
 	logger.Info("terminating on signal", zap.String("signal", sig.String()))
