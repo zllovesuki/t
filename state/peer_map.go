@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 	_ "github.com/zllovesuki/t/peer"
 
 	"github.com/pkg/errors"
@@ -40,12 +41,12 @@ func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	}
 }
 
-func (s *PeerMap) NewPeer(ctx context.Context, protocol multiplexer.Protocol, conf multiplexer.Config) error {
+func (s *PeerMap) NewPeer(ctx context.Context, proto protocol.Protocol, conf multiplexer.Config) error {
 	if _, ok := s.peers.Load(conf.Peer); ok {
 		return ErrSessionAlreadyEstablished
 	}
 
-	c, err := multiplexer.New(protocol)
+	c, err := multiplexer.New(proto)
 	if err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func (s *PeerMap) NewPeer(ctx context.Context, protocol multiplexer.Protocol, co
 	case <-time.After(conf.Wait):
 	}
 
-	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d), zap.String("protocol", protocol.String()))
+	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d), zap.String("protocol", proto.String()))
 
 	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)

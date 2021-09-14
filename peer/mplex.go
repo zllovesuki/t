@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	multiplex "github.com/libp2p/go-mplex"
 	"github.com/pkg/errors"
@@ -15,8 +16,8 @@ import (
 )
 
 func init() {
-	multiplexer.RegisterConstructor(multiplexer.MplexProtocol, NewMplexPeer)
-	multiplexer.RegisterDialer(multiplexer.MplexProtocol, dialMplex)
+	multiplexer.RegisterConstructor(protocol.Mplex, NewMplexPeer)
+	multiplexer.RegisterDialer(protocol.Mplex, dialMplex)
 }
 
 // Mplex is a Peer implementation using libp2p's mplex
@@ -87,8 +88,8 @@ func (p *Mplex) Addr() net.Addr {
 	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
-func (p *Mplex) Protocol() multiplexer.Protocol {
-	return multiplexer.MplexProtocol
+func (p *Mplex) Protocol() protocol.Protocol {
+	return protocol.Mplex
 }
 
 type mplexConn struct {

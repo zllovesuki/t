@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/getlantern/idletiming"
+	"github.com/zllovesuki/t/shared"
 	"github.com/zllovesuki/t/util"
 
 	"github.com/libp2p/go-yamux/v2"
@@ -38,9 +40,13 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
+	s := idletiming.Conn(src, shared.ConnIdleTimeout, func() {
+		dst.Close()
+	})
+
 	wg.Add(2)
-	go pipe(ctx, &wg, err, dst, src)
-	go pipe(ctx, &wg, err, src, dst)
+	go pipe(ctx, &wg, err, dst, s)
+	go pipe(ctx, &wg, err, s, dst)
 	go func() {
 		wg.Wait()
 		close(err)

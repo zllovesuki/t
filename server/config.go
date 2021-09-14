@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/zllovesuki/t/acme"
-	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
@@ -15,7 +15,7 @@ import (
 
 type MultiplexerConfig struct {
 	Peer        int
-	Protocol    multiplexer.Protocol
+	Protocol    protocol.Protocol
 	RespondOnly bool
 }
 

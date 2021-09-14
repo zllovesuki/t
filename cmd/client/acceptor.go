@@ -3,23 +3,21 @@ package main
 import (
 	"net"
 
-	"github.com/zllovesuki/t/multiplexer"
-
 	"github.com/pkg/errors"
 )
 
 type multiplexerAccepter struct {
-	Peer multiplexer.Peer
+	ConnCh chan net.Conn
 }
 
 var _ net.Listener = &multiplexerAccepter{}
 
 func (m *multiplexerAccepter) Accept() (net.Conn, error) {
-	inc, ok := <-m.Peer.Handle()
+	c, ok := <-m.ConnCh
 	if !ok {
 		return nil, errors.New("connection closed")
 	}
-	return inc.Conn, nil
+	return c, nil
 }
 
 func (m *multiplexerAccepter) Addr() net.Addr {
@@ -27,5 +25,5 @@ func (m *multiplexerAccepter) Addr() net.Addr {
 }
 
 func (m *multiplexerAccepter) Close() error {
-	return m.Peer.Bye()
+	return nil
 }

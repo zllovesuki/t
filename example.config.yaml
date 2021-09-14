@@ -51,7 +51,7 @@ multiplexer:
   # sets this peer to respond to peer connection only and never initiate outgoing connection.
   # this is useful where other peers are communicating via QUIC, but this peer is behind
   # firewall that does not work with UDP hole punching, and can be only connected via TCP.
-  respondOnly: true
+  respondOnly: false
 
 tls:
   # peer certificates should be self-signed with "server auth" and "client auth"

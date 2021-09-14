@@ -6,10 +6,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strings"
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/shared"
 
@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (g *Gateway) tunnelHandler() http.Handler {
+func (g *Gateway) httpHandler() http.Handler {
 	return &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
@@ -25,16 +25,11 @@ func (g *Gateway) tunnelHandler() http.Handler {
 		},
 		Transport: &http.Transport{
 			DialContext: func(c context.Context, network, addr string) (net.Conn, error) {
-				parts := strings.SplitN(addr, ".", 2)
-				clientID := shared.PeerHash(parts[0])
-				return g.Multiplexer.Direct(c, multiplexer.Link{
-					Source:      g.Multiplexer.PeerID(),
-					Destination: clientID,
-				})
+				return g.Multiplexer.Direct(c, g.link(addr, alpn.HTTP.String()))
 			},
 			MaxConnsPerHost:       30,
 			MaxIdleConnsPerHost:   10,
-			IdleConnTimeout:       time.Second * 60,
+			IdleConnTimeout:       shared.ConnIdleTimeout,
 			ResponseHeaderTimeout: time.Second * 30,
 			ExpectContinueTimeout: time.Second * 3,
 		},

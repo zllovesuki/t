@@ -8,6 +8,7 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
@@ -59,7 +60,7 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 		return
 	}
 
-	logger := s.logger.With(zap.Any("meta", m))
+	logger := s.logger.With(zap.Object("meta", m))
 
 	if m.PeerID == s.PeerID() {
 		logger.Fatal("gossip: new peer has the same ID as current node", zap.Uint64("self", s.PeerID()))
@@ -100,7 +101,7 @@ func (s *Server) NotifyLeave(node *memberlist.Node) {
 		return
 	}
 
-	s.logger.Info("dead peer discovered via gossip", zap.Any("meta", m))
+	s.logger.Info("dead peer discovered via gossip", zap.Object("meta", m))
 
 	s.removePeer(m.PeerID)
 }
@@ -207,12 +208,13 @@ func (s *Server) connectPeer(m Meta) {
 	var connector interface{}
 	var conn net.Conn
 	var closer func() = func() {}
-	logger := s.logger.With(zap.Any("meta", m))
+	logger := s.logger.With(zap.Object("meta", m))
 
 	link := multiplexer.Link{
 		Source:      s.PeerID(),
 		Destination: m.PeerID,
 		Protocol:    m.Protocol,
+		ALPN:        alpn.Multiplexer,
 	}
 	buf := link.Pack()
 

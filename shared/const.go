@@ -1,5 +1,7 @@
 package shared
 
+import "time"
+
 const (
-	ALPNProto = "multiplexer"
+	ConnIdleTimeout = time.Second * 60
 )

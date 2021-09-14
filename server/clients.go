@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/alpn"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/shared"
 
@@ -37,7 +39,7 @@ func (s *Server) clientQUICHandshake(sess quic.Session) {
 	}
 	defer conn.Close()
 
-	err = s.clientNegotiation(s.logger, sess, peer.WrapQUIC(sess, conn), multiplexer.AcceptableQUICProtocols)
+	err = s.clientNegotiation(s.logger, sess, peer.WrapQUIC(sess, conn), protocol.QUICProtos)
 }
 
 func (s *Server) clientTLSHandshake(conn net.Conn) {
@@ -51,10 +53,10 @@ func (s *Server) clientTLSHandshake(conn net.Conn) {
 		conn.Close()
 	}()
 
-	err = s.clientNegotiation(s.logger, conn, conn, multiplexer.AcceptableTLSProtocols)
+	err = s.clientNegotiation(s.logger, conn, conn, protocol.TLSProtos)
 }
 
-func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []multiplexer.Protocol) (err error) {
+func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []protocol.Protocol) (err error) {
 	var link multiplexer.Link
 	var length int
 	r := make([]byte, multiplexer.LinkSize)
@@ -71,6 +73,11 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		return
 	}
 	link.Unpack(r)
+
+	if link.ALPN != alpn.Multiplexer {
+		err = errors.New("invalid ALPN received from client")
+		return
+	}
 
 	validProtocol := false
 	for _, p := range acceptableProtocols {
@@ -90,7 +97,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		return
 	}
 
-	logger = logger.With(zap.Any("remoteAddr", conn.RemoteAddr()), zap.Any("link", link))
+	logger = logger.With(zap.String("remoteAddr", conn.RemoteAddr().String()), zap.Object("link", link))
 
 	logger.Debug("incoming handshake with client")
 

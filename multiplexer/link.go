@@ -1,10 +1,18 @@
 package multiplexer
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/zllovesuki/t/multiplexer/alpn"
+	"github.com/zllovesuki/t/multiplexer/protocol"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
 
 const (
 	// LinkSize is the encoded buffer size of Link for wire format
-	LinkSize = 17
+	LinkSize = 18
 )
 
 // MessagingLink defines Link in which implementation should consider as Messaing channel
@@ -15,7 +23,18 @@ var MessagingLink = Link{}
 type Link struct {
 	Source      uint64
 	Destination uint64
-	Protocol    Protocol
+	Protocol    protocol.Protocol // used for initial multiplexer handshake only
+	ALPN        alpn.ALPN         // used to specify the expected application protocol
+}
+
+var _ zapcore.ObjectMarshaler = &Link{}
+
+func (l Link) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddUint64("Source", l.Source)
+	enc.AddUint64("Destination", l.Destination)
+	zap.Inline(l.Protocol).AddTo(enc)
+	zap.Inline(l.ALPN).AddTo(enc)
+	return nil
 }
 
 func (s *Link) Pack() []byte {
@@ -23,13 +42,15 @@ func (s *Link) Pack() []byte {
 	binary.BigEndian.PutUint64(b[0:8], s.Source)
 	binary.BigEndian.PutUint64(b[8:16], s.Destination)
 	b[16] = byte(s.Protocol)
+	b[17] = byte(s.ALPN)
 	return b
 }
 
 func (s *Link) Unpack(b []byte) {
 	s.Source = binary.BigEndian.Uint64(b[0:8])
 	s.Destination = binary.BigEndian.Uint64(b[8:16])
-	s.Protocol = Protocol(b[16])
+	s.Protocol = protocol.Protocol(b[16])
+	s.ALPN = alpn.ALPN(b[17])
 }
 
 func (s *Link) Flip() Link {

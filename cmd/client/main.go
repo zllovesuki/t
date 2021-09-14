@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/alpn"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 	"github.com/zllovesuki/t/shared"
 	"github.com/zllovesuki/t/state"
 	_ "github.com/zllovesuki/t/workaround"
@@ -37,11 +39,11 @@ const (
 )
 
 var (
-	target   = flag.String("peer", "127.0.0.1:11111", "specify the peering target without using autodiscovery")
-	where    = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
-	forward  = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
-	debug    = flag.Bool("debug", false, "verbose logging and disable TLS verification")
-	protocol = flag.Int("protocol", int(multiplexer.MplexProtocol), "multiplexer protocol to be used (1: Yamux; 2: Mplex; 3: QUIC) - usually used in debugging")
+	target  = flag.String("peer", "127.0.0.1:11111", "specify the peering target without using autodiscovery")
+	where   = flag.String("where", defaultWhere, "auto discover the peer target given the apex")
+	forward = flag.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
+	debug   = flag.Bool("debug", false, "verbose logging and disable TLS verification")
+	proto   = flag.Int("protocol", int(protocol.Mplex), "multiplexer protocol to be used (1: Yamux; 2: Mplex; 3: QUIC) - usually used in debugging")
 )
 
 func main() {
@@ -63,8 +65,10 @@ func main() {
 		logger.Fatal("parsing forwarding target", zap.Error(err))
 	}
 
-	if u.Scheme != "http" && u.Scheme != "https" {
-		logger.Fatal("only http/https schema is supported", zap.String("schema", u.Scheme))
+	switch u.Scheme {
+	case "http", "https", "tcp":
+	default:
+		logger.Fatal("unsupported scheme. valid schemes: http, https, tcp", zap.String("schema", u.Scheme))
 	}
 
 	peerTarget := *target
@@ -101,7 +105,7 @@ func main() {
 	var link multiplexer.Link
 	var g shared.GeneratedName
 
-	proposedProtocol := multiplexer.Protocol(*protocol)
+	proposedProtocol := protocol.Protocol(*proto)
 	dialer, err := multiplexer.Dialer(proposedProtocol)
 	if err != nil {
 		logger.Fatal("selecting peer dialer", zap.Error(err))
@@ -111,7 +115,7 @@ func main() {
 
 	connector, conn, _, err = dialer(peerTarget, &tls.Config{
 		InsecureSkipVerify: *debug,
-		NextProtos:         []string{shared.ALPNProto},
+		NextProtos:         []string{alpn.Multiplexer.String()},
 	})
 	if err != nil {
 		logger.Fatal("connecting to peer", zap.Error(err))
@@ -134,7 +138,7 @@ func main() {
 	var p multiplexer.Peer
 	select {
 	case p = <-pm.Notify():
-		logger.Info("Peering established", zap.Any("link", link))
+		logger.Info("Peering established", zap.Object("link", link))
 	case <-time.After(time.Second * 3):
 		logger.Fatal("timeout attempting to establish connection with peer")
 	}
@@ -154,29 +158,64 @@ func main() {
 		sigs <- syscall.SIGTERM
 	}()
 
-	// In theory, we could support TCP forwarding. However, since we are doing TLS termination
-	// on the Gateway, whatever TCP negotiation protocol will get yeeted by the TLS handshake.
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, e error) {
 		logger.Error("forward http/https request", zap.Error(e))
 		rw.WriteHeader(http.StatusBadGateway)
 		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
+	c := make(chan net.Conn, 32)
 	go func() {
 		accepter := &multiplexerAccepter{
-			Peer: p,
+			ConnCh: c,
 		}
 		http.Serve(accepter, proxy)
 	}()
 
+	go func() {
+		for l := range p.Handle() {
+			if !alpnCheck(l.Link.ALPN, u) {
+				logger.Error("invalid alpn for forwarding", zap.String("scheme", u.Scheme), zap.String("ALPN", l.Link.ALPN.String()))
+				l.Conn.Close()
+				continue
+			}
+			switch l.Link.ALPN {
+			default:
+				c <- l.Conn
+			case alpn.Multiplexer:
+				logger.Fatal("received alpn proposal for multiplexer on forward target")
+			case alpn.Raw:
+				dialer := &net.Dialer{}
+				n, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", u.Hostname(), u.Port()))
+				if err != nil {
+					logger.Error("forwarding raw connection", zap.Error(err))
+					l.Conn.Close()
+					continue
+				}
+				multiplexer.Connect(ctx, n, l.Conn)
+			}
+		}
+	}()
+
 	<-sigs
 	pm.Remove(p.Peer())
-
 }
 
-func peerNegotiation(logger *zap.Logger, connector net.Conn, protocol multiplexer.Protocol) (link multiplexer.Link, g shared.GeneratedName) {
+func alpnCheck(a alpn.ALPN, u *url.URL) bool {
+	switch u.Scheme {
+	case "http", "https":
+		return a == alpn.HTTP
+	case "tcp":
+		return a == alpn.Raw
+	default:
+		return false
+	}
+}
+
+func peerNegotiation(logger *zap.Logger, connector net.Conn, proto protocol.Protocol) (link multiplexer.Link, g shared.GeneratedName) {
 	link = multiplexer.Link{
-		Protocol: multiplexer.Protocol(protocol),
+		Protocol: protocol.Protocol(proto),
+		ALPN:     alpn.Multiplexer,
 	}
 	buf := link.Pack()
 	n, err := connector.Write(buf)

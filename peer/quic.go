@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/lucas-clemente/quic-go"
 	"github.com/pkg/errors"
@@ -16,15 +17,16 @@ import (
 )
 
 func init() {
-	multiplexer.RegisterConstructor(multiplexer.QUICProtocol, NewQuicPeer)
-	multiplexer.RegisterDialer(multiplexer.QUICProtocol, dialQuic)
+	multiplexer.RegisterConstructor(protocol.QUIC, NewQuicPeer)
+	multiplexer.RegisterDialer(protocol.QUIC, dialQuic)
 }
 
 func quicConfigCommon() *quic.Config {
 	return &quic.Config{
-		KeepAlive:            true,
-		HandshakeIdleTimeout: time.Second * 3,
-		MaxIdleTimeout:       time.Second * 15,
+		KeepAlive:               true,
+		HandshakeIdleTimeout:    time.Second * 3,
+		MaxIdleTimeout:          time.Second * 15,
+		DisablePathMTUDiscovery: true,
 	}
 }
 
@@ -114,8 +116,8 @@ func (p *QUIC) Addr() net.Addr {
 	return p.config.Conn.(quic.Session).RemoteAddr()
 }
 
-func (p *QUIC) Protocol() multiplexer.Protocol {
-	return multiplexer.QUICProtocol
+func (p *QUIC) Protocol() protocol.Protocol {
+	return protocol.QUIC
 }
 
 type quicConn struct {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/libp2p/go-yamux/v2"
 	"github.com/pkg/errors"
@@ -16,8 +17,8 @@ import (
 )
 
 func init() {
-	multiplexer.RegisterConstructor(multiplexer.YamuxProtocol, NewYamuxPeer)
-	multiplexer.RegisterDialer(multiplexer.YamuxProtocol, dialYamux)
+	multiplexer.RegisterConstructor(protocol.Yamux, NewYamuxPeer)
+	multiplexer.RegisterDialer(protocol.Yamux, dialYamux)
 }
 
 // Yamux is a Peer implementation using hashicorp's Yamux
@@ -134,8 +135,8 @@ func (p *Yamux) Addr() net.Addr {
 	return p.config.Conn.(net.Conn).RemoteAddr()
 }
 
-func (p *Yamux) Protocol() multiplexer.Protocol {
-	return multiplexer.YamuxProtocol
+func (p *Yamux) Protocol() protocol.Protocol {
+	return protocol.Yamux
 }
 
 func (p *Yamux) streamHandshake(c context.Context, conn net.Conn) {

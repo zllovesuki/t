@@ -4,8 +4,11 @@ import (
 	"encoding/binary"
 	"net"
 
+	"github.com/zllovesuki/t/multiplexer/protocol"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/pkg/errors"
-	"github.com/zllovesuki/t/multiplexer"
 )
 
 const (
@@ -16,8 +19,17 @@ type Meta struct {
 	ConnectIP   string
 	ConnectPort uint64
 	PeerID      uint64
-	Protocol    multiplexer.Protocol
+	Protocol    protocol.Protocol
 	RespondOnly bool
+}
+
+func (m Meta) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("IP", m.ConnectIP)
+	enc.AddUint64("Port", m.ConnectPort)
+	enc.AddUint64("Peer", m.PeerID)
+	zap.Inline(m.Protocol).AddTo(enc)
+	enc.AddBool("RespondeOnly", m.RespondOnly)
+	return nil
 }
 
 func (m *Meta) Pack() []byte {
@@ -41,7 +53,7 @@ func (m *Meta) Unpack(b []byte) error {
 	m.ConnectIP = ip.To4().String()
 	m.ConnectPort = binary.BigEndian.Uint64(b[8:16])
 	m.PeerID = binary.BigEndian.Uint64(b[16:24])
-	m.Protocol = multiplexer.Protocol(b[24])
+	m.Protocol = protocol.Protocol(b[24])
 	if b[25] == 1 {
 		m.RespondOnly = true
 	}

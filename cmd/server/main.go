@@ -16,12 +16,12 @@ import (
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
+	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/peer"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/reuse"
 	"github.com/zllovesuki/t/server"
-	"github.com/zllovesuki/t/shared"
 
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
@@ -113,7 +113,7 @@ func main() {
 		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkPeerSAN("t_Peer"),
-		NextProtos:               []string{shared.ALPNProto},
+		NextProtos:               []string{alpn.Multiplexer.String()},
 	}
 
 	gatwayTLSConfig := &tls.Config{
@@ -123,7 +123,7 @@ func main() {
 		MinVersion:               tls.VersionTLS11,
 		PreferServerCipherSuites: true,
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
-		NextProtos:               []string{"http/1.1", shared.ALPNProto},
+		NextProtos:               alpn.Protos,
 	}
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
@@ -168,8 +168,8 @@ func main() {
 
 	alpnMux := gateway.NewALPNMux(logger, gMux)
 
-	clientTLSListener := alpnMux.For(shared.ALPNProto)
-	gatewayListener := alpnMux.For("http/1.1", "")
+	clientTLSListener := alpnMux.For(alpn.Multiplexer)
+	gatewayListener := alpnMux.For(alpn.Raw, alpn.HTTP, alpn.Unknown)
 
 	if bundle.Multiplexer.Peer == 0 {
 		addr, _ := peerTLSListener.Addr().(*net.TCPAddr)

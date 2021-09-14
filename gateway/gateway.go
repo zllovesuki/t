@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"text/template"
 
+	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/server"
+	"github.com/zllovesuki/t/shared"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -24,9 +28,9 @@ type GatewayConfig struct {
 
 type Gateway struct {
 	GatewayConfig
-	apexServer     *apexServer
-	apexAcceptor   *httpAccepter
-	tunnelAcceptor *httpAccepter
+	apexServer         *apexServer
+	apexAcceptor       *httpAccepter
+	httpTunnelAcceptor *httpAccepter
 }
 
 func New(conf GatewayConfig) (*Gateway, error) {
@@ -48,7 +52,7 @@ func New(conf GatewayConfig) (*Gateway, error) {
 			parent: conf.Listener,
 			ch:     make(chan net.Conn, 1024),
 		},
-		tunnelAcceptor: &httpAccepter{
+		httpTunnelAcceptor: &httpAccepter{
 			parent: conf.Listener,
 			ch:     make(chan net.Conn, 1024),
 		},
@@ -65,7 +69,7 @@ func New(conf GatewayConfig) (*Gateway, error) {
 func (g *Gateway) Start(ctx context.Context) {
 
 	go http.Serve(g.apexAcceptor, g.apexServer.Handler())
-	go http.Serve(g.tunnelAcceptor, g.tunnelHandler())
+	go http.Serve(g.httpTunnelAcceptor, g.httpHandler())
 
 	for {
 		conn, err := g.Listener.Accept()
@@ -86,6 +90,33 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 		g.apexAcceptor.ch <- conn
 	default:
 		// maybe tunnel it
-		g.tunnelAcceptor.ch <- conn
+		switch cs.NegotiatedProtocol {
+		case alpn.Unknown.String(), alpn.HTTP.String():
+			g.Logger.Debug("forward http connection")
+			g.httpTunnelAcceptor.ch <- conn
+		case alpn.Raw.String():
+			g.Logger.Debug("forward raw connection")
+			_, err := g.Multiplexer.Forward(ctx, conn, g.link(cs.ServerName, cs.NegotiatedProtocol))
+			if err != nil {
+				g.Logger.Error("establish raw link error", zap.Error(err))
+				conn.Close()
+			}
+		case alpn.Multiplexer.String():
+			g.Logger.Error("received alpn proposal for multiplexer on gateway")
+			conn.Close()
+		default:
+			g.Logger.Error("unknown alpn proposal", zap.String("proposal", cs.NegotiatedProtocol))
+			conn.Close()
+		}
+	}
+}
+
+func (g *Gateway) link(sni, proto string) multiplexer.Link {
+	parts := strings.SplitN(sni, ".", 2)
+	clientID := shared.PeerHash(parts[0])
+	return multiplexer.Link{
+		Source:      g.Multiplexer.PeerID(),
+		Destination: clientID,
+		ALPN:        alpn.ReverseMap[proto],
 	}
 }

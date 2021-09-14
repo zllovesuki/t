@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/profiler"
 
 	"go.uber.org/zap"
@@ -77,10 +78,10 @@ func (a *ALPN) Serve(ctx context.Context) {
 	}
 }
 
-func (a *ALPN) For(protos ...string) net.Listener {
+func (a *ALPN) For(protos ...alpn.ALPN) net.Listener {
 	ch := make(chan net.Conn, 32)
 	for _, proto := range protos {
-		a.protos.Store(proto, ch)
+		a.protos.Store(proto.String(), ch)
 	}
 	return &protoListener{
 		l: a.listener,

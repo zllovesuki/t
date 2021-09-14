@@ -1,35 +1,10 @@
 package multiplexer
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-)
-
-//go:generate stringer -type=Protocol
-
-type Protocol int
-
-const (
-	UnknownProtocol Protocol = iota
-	YamuxProtocol
-	MplexProtocol
-	QUICProtocol
-)
-
-var AcceptableTLSProtocols = []Protocol{
-	YamuxProtocol,
-	MplexProtocol,
-}
-
-var AcceptableQUICProtocols = []Protocol{
-	QUICProtocol,
-}
-
-var (
-	ErrUnknownProtocol = fmt.Errorf("unknown protocol")
 )
 
 type Config struct {

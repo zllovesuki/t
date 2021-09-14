@@ -4,6 +4,8 @@ import (
 	"context"
 	"net"
 	"time"
+
+	"github.com/zllovesuki/t/multiplexer/protocol"
 )
 
 // LinkConnection contains the net.Conn associated with the Link
@@ -23,7 +25,7 @@ type Peer interface {
 	// Initiator should return if the Peer initiated the connection
 	Initiator() bool
 	// Protocol returns the multiplexer protocol in used with the peer
-	Protocol() Protocol
+	Protocol() protocol.Protocol
 	// Peer returns the uint64 identifier of the connected Peer
 	Peer() uint64
 	// Ping is useful for checking latency and health
