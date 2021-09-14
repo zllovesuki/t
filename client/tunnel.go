@@ -29,14 +29,15 @@ const (
 )
 
 type TunnelOpts struct {
-	Logger  *zap.Logger
-	Forward string
-	Target  string
-	Where   string
-	Proto   int
-	Debug   bool
-	Version string
-	Sigs    chan os.Signal
+	Logger    *zap.Logger
+	Forward   string
+	Target    string
+	Where     string
+	Proto     int
+	Debug     bool
+	Overwrite bool
+	Version   string
+	Sigs      chan os.Signal
 }
 
 func Tunnel(ctx context.Context, opts TunnelOpts) {
@@ -122,10 +123,16 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		logger.Fatal("timeout attempting to establish connection with peer")
 	}
 
+	v, _ := url.Parse(g.Hostname)
+	h := v.Hostname()
+	if opts.Overwrite {
+		h = u.Hostname()
+	}
+
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 	switch u.Scheme {
 	case "http", "https":
-		fmt.Printf("HTTPS requests will be forwarded to: %+v\n", opts.Forward)
+		fmt.Printf("HTTPS requests will be forwarded to: %+v (Host: %s)\n", opts.Forward, h)
 	case "tcp":
 		fmt.Printf("TCP connections will be forwarded to: %+v\n\n", opts.Forward)
 		fmt.Printf("Example usages:\n\n")
@@ -147,12 +154,14 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 	}()
 
 	proxy := httputil.NewSingleHostReverseProxy(u)
-	// https://stackoverflow.com/a/53007606
-	// need to overwrite Host field
 	d := proxy.Director
-	proxy.Director = func(r *http.Request) {
-		d(r)
-		r.Host = u.Host
+	if opts.Overwrite {
+		// https://stackoverflow.com/a/53007606
+		// need to overwrite Host field
+		proxy.Director = func(r *http.Request) {
+			d(r)
+			r.Host = u.Host
+		}
 	}
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{
