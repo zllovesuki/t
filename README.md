@@ -30,16 +30,40 @@ The peers have to be publicly accessible on the Internet (they are the gateway, 
 
 ![t architecture](assets/t_architecture.png)
 
-# How to Use
+# How to Use (Simple)
 
 1. First you need a publicly accessible host. You can run one for $5 a month or cheaper from your favorite cloud/vps providers;
 2. Configure RFC2136 settings. This is for completing the `dns-01` challenge for Let's Encrypt as we will be requesting for wildcard certificate;
 3. Configure the rest of `config.yaml`, then run the `server -config config.yaml` with your favorite manager (e.g. Systemd);
-4. Run `client -where tunnel.example.com -forward 127.0.0.1:3000`, and you should see a FQDN hostname ready to be used to tunnel HTTPS request to your apps running locally.
+4. Run `t-client-${GOOS}-${GOARCH} tunnel -where tunnel.example.com -forward http://127.0.0.1:3000`, and you should see a FQDN hostname ready to be used to tunnel HTTPS request to your apps running locally.
+
+# How to Use (Advanced)
+
+Run `t-client-${GOOS}-${GOARCH} tunnel -where tunnel.example.com -forward tcp://127.0.0.1:3000` (notice the `tcp://`), and you should see a FQDN hostname ready to be used to tunnel TCP connection.
+
+Note that this will disable HTTP(s) requests forwarding.
+
+For Stdin/Stdout usage, use `t-client-${GOOS}-${GOARCH} connect`:
+```
+  -debug
+        verbose logging and disable TLS verification
+  -url string
+        the URL as shown by the tunnel subcommand (default "https://exhaust-timing-harmless-saved-startup.tunnel.example.com")
+```
+
+For listening TCP connections and forward them, use `t-client-${GOOS}-${GOARCH} forward`:
+```
+  -debug
+        verbose logging and disable TLS verification
+  -listen string
+        listen for tcp connections and forward them via tunnel (default ":5678")
+  -url string
+        the URL as shown by the tunnel subcommand (default "https://exhaust-timing-harmless-saved-startup.tunnel.example.com")
+```
 
 # How to Build
 
-You will need Go 1.17+
+You will need Go 1.17+ for non-Android targets. Building for Android requires NDK and Go 1.16.x.
 
 ```bash
 # building the server
