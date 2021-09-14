@@ -10,7 +10,7 @@ import (
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/multiplexer/protocol"
-	"github.com/zllovesuki/t/peer"
+	"github.com/zllovesuki/t/mux"
 	"github.com/zllovesuki/t/shared"
 
 	"github.com/lucas-clemente/quic-go"
@@ -39,7 +39,7 @@ func (s *Server) clientQUICHandshake(sess quic.Session) {
 	}
 	defer conn.Close()
 
-	err = s.clientNegotiation(s.logger, sess, peer.WrapQUIC(sess, conn), protocol.QUICProtos)
+	err = s.clientNegotiation(s.logger, sess, mux.WrapQUIC(sess, conn), protocol.QUICProtos)
 }
 
 func (s *Server) clientTLSHandshake(conn net.Conn) {

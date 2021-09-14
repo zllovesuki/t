@@ -1,4 +1,4 @@
-package peer
+package mux
 
 import (
 	"github.com/lucas-clemente/quic-go"

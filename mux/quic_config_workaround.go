@@ -1,7 +1,7 @@
 //go:build ignore
 // +build ignore
 
-package peer
+package mux
 
 import (
 	"github.com/lucas-clemente/quic-go"

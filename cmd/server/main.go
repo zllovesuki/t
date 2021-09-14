@@ -17,7 +17,7 @@ import (
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
 	"github.com/zllovesuki/t/multiplexer/alpn"
-	"github.com/zllovesuki/t/peer"
+	"github.com/zllovesuki/t/mux"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
 	"github.com/zllovesuki/t/reuse"
@@ -136,7 +136,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("setting up for peer quic connection", zap.Error(err))
 	}
-	peerQuicListener, err := quic.Listen(qp, peerTLSConfig, peer.QUICConfig())
+	peerQuicListener, err := quic.Listen(qp, peerTLSConfig, mux.QUICConfig())
 	if err != nil {
 		logger.Fatal("listening for peer quic connection", zap.Error(err))
 	}
@@ -146,7 +146,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("setting up for client quic connection", zap.Error(err))
 	}
-	clientQuicListener, err := quic.Listen(qc, gatwayTLSConfig, peer.QUICConfig())
+	clientQuicListener, err := quic.Listen(qc, gatwayTLSConfig, mux.QUICConfig())
 	if err != nil {
 		logger.Fatal("listening for client quic connection", zap.Error(err))
 	}

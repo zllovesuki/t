@@ -9,7 +9,7 @@ import (
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/protocol"
-	_ "github.com/zllovesuki/t/peer"
+	_ "github.com/zllovesuki/t/mux"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
