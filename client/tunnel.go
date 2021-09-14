@@ -147,11 +147,24 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 	}()
 
 	proxy := httputil.NewSingleHostReverseProxy(u)
+	// https://stackoverflow.com/a/53007606
+	// need to overwrite Host field
+	d := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		d(r)
+		r.Host = u.Host
+	}
+	proxy.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: opts.Debug,
+		},
+	}
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, e error) {
-		logger.Error("forward http/https request", zap.Error(e))
+		logger.Error("forwarding http/https request", zap.Error(e))
 		rw.WriteHeader(http.StatusBadGateway)
 		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
+
 	c := make(chan net.Conn, 32)
 	go func() {
 		accepter := &httpAccepter{
