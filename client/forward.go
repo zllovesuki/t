@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/zllovesuki/t/multiplexer"
-	"github.com/zllovesuki/t/reuse"
+	"github.com/zllovesuki/t/sock"
 
 	"go.uber.org/zap"
 )
@@ -38,7 +38,7 @@ func Forward(ctx context.Context, opts ForwardOpts) {
 	defer cancel()
 
 	cfg := &net.ListenConfig{
-		Control: reuse.Control,
+		Control: sock.Control,
 	}
 	l, err := cfg.Listen(x, "tcp", opts.Addr)
 	if err != nil {

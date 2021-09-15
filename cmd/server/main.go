@@ -20,8 +20,8 @@ import (
 	"github.com/zllovesuki/t/mux"
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/provider"
-	"github.com/zllovesuki/t/reuse"
 	"github.com/zllovesuki/t/server"
+	"github.com/zllovesuki/t/sock"
 
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
@@ -240,14 +240,14 @@ func main() {
 
 func getReuseListener(ctx context.Context, network, address string) (net.Listener, error) {
 	cfg := &net.ListenConfig{
-		Control: reuse.Control,
+		Control: sock.Control,
 	}
 	return cfg.Listen(ctx, network, address)
 }
 
 func getReusePacketConn(ctx context.Context, network, address string) (net.PacketConn, error) {
 	cfg := &net.ListenConfig{
-		Control: reuse.Control,
+		Control: sock.Control,
 	}
 	return cfg.ListenPacket(ctx, network, address)
 }
