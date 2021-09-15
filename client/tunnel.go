@@ -123,16 +123,16 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		logger.Fatal("timeout attempting to establish connection with peer")
 	}
 
-	v, _ := url.Parse(g.Hostname)
-	h := v.Hostname()
+	tunnelURL, _ := url.Parse(g.Hostname)
+	hostHeader := u.Hostname()
 	if opts.Overwrite {
-		h = u.Hostname()
+		hostHeader = tunnelURL.Hostname()
 	}
 
 	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 	switch u.Scheme {
 	case "http", "https":
-		fmt.Printf("HTTPS requests will be forwarded to: %+v (Host: %s)\n", opts.Forward, h)
+		fmt.Printf("HTTPS requests will be forwarded to: %+v (Host: %s)\n", opts.Forward, hostHeader)
 	case "tcp":
 		fmt.Printf("TCP connections will be forwarded to: %+v\n\n", opts.Forward)
 		fmt.Printf("Example usages:\n\n")
@@ -155,13 +155,11 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 
 	proxy := httputil.NewSingleHostReverseProxy(u)
 	d := proxy.Director
-	if opts.Overwrite {
-		// https://stackoverflow.com/a/53007606
-		// need to overwrite Host field
-		proxy.Director = func(r *http.Request) {
-			d(r)
-			r.Host = u.Host
-		}
+	// https://stackoverflow.com/a/53007606
+	// need to overwrite Host field
+	proxy.Director = func(r *http.Request) {
+		d(r)
+		r.Host = hostHeader
 	}
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{

@@ -34,7 +34,7 @@ func main() {
 	forward := tunnelCommand.String("forward", "http://127.0.0.1:3000", "the http/https forwarding target")
 	proto := tunnelCommand.Int("protocol", int(protocol.Mplex), "multiplexer protocol to be used (1: Yamux; 2: Mplex; 3: QUIC) - usually used in debugging")
 	tDebug := tunnelCommand.Bool("debug", false, "verbose logging and disable TLS verification")
-	overwrite := tunnelCommand.Bool("overwrite", false, "overwrite proxied request Host header to match forward target")
+	overwrite := tunnelCommand.Bool("overwrite", false, "overwrite proxied request Host header with tunnel hostname")
 
 	cConnect := connectCommand.String("url", client.DefaultConnect, "the URL as shown by the tunnel subcommand")
 	cDebug := connectCommand.Bool("debug", false, "verbose logging and disable TLS verification")
