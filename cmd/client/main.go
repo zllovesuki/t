@@ -63,10 +63,10 @@ func main() {
 	var logCfg zap.Config
 	var logger *zap.Logger
 	var err error
-	if *cDebug || *tDebug {
-		logCfg = zap.NewProductionConfig()
-	} else {
+	if *cDebug || *tDebug || *fDebug {
 		logCfg = zap.NewDevelopmentConfig()
+	} else {
+		logCfg = zap.NewProductionConfig()
 	}
 	logCfg.OutputPaths = []string{"stderr"}
 	logger, err = logCfg.Build()
