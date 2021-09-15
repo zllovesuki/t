@@ -132,7 +132,11 @@ func New(conf Config) (*Server, error) {
 
 	// since meta is read-only, storing the bytes and read it atomically
 	// from gossip should help with allocation
-	s.metaBytes.Store(s.meta.Pack())
+	b, err := s.meta.MarshalBinary()
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal meta")
+	}
+	s.metaBytes.Store(b)
 
 	return s, nil
 }

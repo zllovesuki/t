@@ -1,8 +1,10 @@
 package multiplexer
 
 import (
+	"encoding"
 	"encoding/binary"
 
+	"github.com/pkg/errors"
 	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
@@ -28,6 +30,8 @@ type Link struct {
 }
 
 var _ zapcore.ObjectMarshaler = &Link{}
+var _ encoding.BinaryMarshaler = &Link{}
+var _ encoding.BinaryUnmarshaler = &Link{}
 
 func (l Link) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddUint64("Source", l.Source)
@@ -37,20 +41,24 @@ func (l Link) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func (s *Link) Pack() []byte {
+func (s *Link) MarshalBinary() ([]byte, error) {
 	b := make([]byte, LinkSize)
 	binary.BigEndian.PutUint64(b[0:8], s.Source)
 	binary.BigEndian.PutUint64(b[8:16], s.Destination)
 	b[16] = byte(s.Protocol)
 	b[17] = byte(s.ALPN)
-	return b
+	return b, nil
 }
 
-func (s *Link) Unpack(b []byte) {
+func (s *Link) UnmarshalBinary(b []byte) error {
+	if len(b) != LinkSize {
+		return errors.Errorf("invalid buffer length: %d", len(b))
+	}
 	s.Source = binary.BigEndian.Uint64(b[0:8])
 	s.Destination = binary.BigEndian.Uint64(b[8:16])
 	s.Protocol = protocol.Protocol(b[16])
 	s.ALPN = alpn.ALPN(b[17])
+	return nil
 }
 
 func (s *Link) Flip() Link {

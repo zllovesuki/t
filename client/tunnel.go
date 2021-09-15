@@ -228,7 +228,11 @@ func peerNegotiation(logger *zap.Logger, connector net.Conn, proto protocol.Prot
 		Protocol: protocol.Protocol(proto),
 		ALPN:     alpn.Multiplexer,
 	}
-	buf := link.Pack()
+	buf, err := link.MarshalBinary()
+	if err != nil {
+		logger.Fatal("marshal link", zap.Error(err))
+	}
+
 	n, err := connector.Write(buf)
 	if err != nil {
 		logger.Fatal("writing handshake to peer", zap.Error(err))
@@ -239,16 +243,16 @@ func peerNegotiation(logger *zap.Logger, connector net.Conn, proto protocol.Prot
 		return
 	}
 
-	n, err = connector.Read(buf)
+	_, err = connector.Read(buf)
 	if err != nil {
 		logger.Fatal("reading handshake from peer", zap.Error(err))
 		return
 	}
-	if n != multiplexer.LinkSize {
-		logger.Fatal("invalid handshake length received", zap.Int("length", n))
+
+	if err := link.UnmarshalBinary(buf); err != nil {
+		logger.Fatal("unmarshal link", zap.Error(err))
 		return
 	}
-	link.Unpack(buf)
 
 	err = json.NewDecoder(connector).Decode(&g)
 	if err != nil {

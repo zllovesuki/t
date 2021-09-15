@@ -58,21 +58,22 @@ func (s *Server) clientTLSHandshake(conn net.Conn) {
 
 func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []protocol.Protocol) (err error) {
 	var link multiplexer.Link
-	var length int
 	r := make([]byte, multiplexer.LinkSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 3))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 3))
-	length, err = conn.Read(r)
+
+	_, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
 		return
 	}
-	if length != multiplexer.LinkSize {
-		err = errors.Errorf("invalid handshake length received from client: %d", length)
+
+	err = link.UnmarshalBinary(r)
+	if err != nil {
+		err = errors.Wrap(err, "unmarshal link")
 		return
 	}
-	link.Unpack(r)
 
 	if link.ALPN != alpn.Multiplexer {
 		err = errors.New("invalid ALPN received from client")
@@ -109,8 +110,15 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 	name := shared.RandomHostname()
 	link.Source = shared.PeerHash(name)
 	link.Destination = s.PeerID()
-	w := link.Pack()
 
+	var w []byte
+	w, err = link.MarshalBinary()
+	if err != nil {
+		err = errors.Wrap(err, "marshal link as binary")
+		return
+	}
+
+	var length int
 	length, err = conn.Write(w)
 	if err != nil {
 		err = errors.Wrap(err, "replying handshake")
@@ -120,6 +128,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		err = errors.Errorf("invalid handshake length sent to client: %d", length)
 		return
 	}
+
 	err = json.NewEncoder(conn).Encode(&shared.GeneratedName{
 		Hostname: fmt.Sprintf("https://%s.%s", name, s.config.Domain),
 	})

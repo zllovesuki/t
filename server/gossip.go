@@ -56,7 +56,7 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 	}
 
 	var m Meta
-	if err := m.Unpack(node.Meta); err != nil {
+	if err := m.UnmarshalBinary(node.Meta); err != nil {
 		return
 	}
 
@@ -97,7 +97,7 @@ func (s *Server) NotifyLeave(node *memberlist.Node) {
 	}
 
 	var m Meta
-	if err := m.Unpack(node.Meta); err != nil {
+	if err := m.UnmarshalBinary(node.Meta); err != nil {
 		return
 	}
 
@@ -208,15 +208,9 @@ func (s *Server) connectPeer(m Meta) {
 	var connector interface{}
 	var conn net.Conn
 	var closer func() = func() {}
-	logger := s.logger.With(zap.Object("meta", m))
+	var buf []byte
 
-	link := multiplexer.Link{
-		Source:      s.PeerID(),
-		Destination: m.PeerID,
-		Protocol:    m.Protocol,
-		ALPN:        alpn.Multiplexer,
-	}
-	buf := link.Pack()
+	logger := s.logger.With(zap.Object("meta", m))
 
 	logger.Debug("initiating handshake with peer")
 
@@ -229,6 +223,19 @@ func (s *Server) connectPeer(m Meta) {
 			closer()
 		}
 	}()
+
+	link := multiplexer.Link{
+		Source:      s.PeerID(),
+		Destination: m.PeerID,
+		Protocol:    m.Protocol,
+		ALPN:        alpn.Multiplexer,
+	}
+
+	buf, err = link.MarshalBinary()
+	if err != nil {
+		err = errors.Wrap(err, "marshal link")
+		return
+	}
 
 	dialer, err := multiplexer.Dialer(m.Protocol)
 	if err != nil {

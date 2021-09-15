@@ -137,17 +137,17 @@ func (p *QUIC) streamHandshake(c context.Context, conn quic.Stream) {
 	var s multiplexer.Link
 	buf := make([]byte, multiplexer.LinkSize)
 
-	read, err := conn.Read(buf)
+	_, err := conn.Read(buf)
 	if err != nil {
 		p.logger.Error("reading stream handshake", zap.Error(err))
 		return
 	}
-	if read != multiplexer.LinkSize {
-		p.logger.Error("invalid handshake length", zap.Int("length", read))
+
+	if err := s.UnmarshalBinary(buf); err != nil {
+		p.logger.Error("unmarshal link", zap.Error(err))
 		return
 	}
 
-	s.Unpack(buf)
 	p.channel.Put(multiplexer.LinkConnection{
 		Link: s,
 		Conn: &quicConn{
@@ -176,7 +176,11 @@ func (p *QUIC) Messaging(ctx context.Context) (net.Conn, error) {
 		return nil, errors.Wrap(err, "opening new messaging stream")
 	}
 	link := multiplexer.MessagingLink
-	buf := link.Pack()
+	buf, err := link.MarshalBinary()
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal link as binary")
+	}
+
 	written, err := n.Write(buf)
 	if err != nil {
 		return nil, errors.Wrap(err, "writing messaging stream handshake")
@@ -196,7 +200,11 @@ func (p *QUIC) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, err
 		return nil, errors.Wrap(err, "opening new stream")
 	}
 
-	buf := link.Pack()
+	buf, err := link.MarshalBinary()
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal link as binary")
+	}
+
 	written, err := n.Write(buf)
 	if err != nil {
 		return nil, errors.Wrap(err, "writing stream handshake")

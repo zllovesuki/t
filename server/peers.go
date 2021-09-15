@@ -60,21 +60,21 @@ func (s *Server) peerTLSHandshake(conn net.Conn) {
 
 func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []protocol.Protocol) (err error) {
 	var link multiplexer.Link
-	var read int
 	r := make([]byte, multiplexer.LinkSize)
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
-	read, err = conn.Read(r)
+	_, err = conn.Read(r)
 	if err != nil {
 		err = errors.Wrap(err, "reading handshake")
 		return
 	}
-	if read != multiplexer.LinkSize {
-		err = errors.Errorf("invalid handshake length received from peer: %d", read)
+
+	err = link.UnmarshalBinary(r)
+	if err != nil {
+		err = errors.Wrap(err, "unmarshal link")
 		return
 	}
-	link.Unpack(r)
 
 	if link.ALPN != alpn.Multiplexer {
 		err = errors.New("invalid ALPN received from peer")
