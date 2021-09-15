@@ -1,9 +1,11 @@
-//go:build !plan9 && !windows && !wasm
-// +build !plan9,!windows,!wasm
+//go:build !plan9 && !windows && !wasm && !freebsd && !darwin
+// +build !plan9,!windows,!wasm,!freebsd,!darwin
 
 package sock
 
-import "syscall"
+import (
+	"syscall"
+)
 
 func Control(network, address string, conn syscall.RawConn) error {
 	return conn.Control(func(fd uintptr) {
