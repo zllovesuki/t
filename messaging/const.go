@@ -28,12 +28,6 @@ const (
 	rrHeaderLength      = 17
 )
 
-type Message struct {
-	Type MessageType
-	From uint64
-	Data []byte
-}
-
 type Channel struct {
 	peers  *sync.Map
 	logger *zap.Logger

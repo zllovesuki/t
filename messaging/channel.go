@@ -54,7 +54,11 @@ func (c *Channel) Register(peer uint64, conn net.Conn) <-chan Message {
 func (c *Channel) writer(wg *sync.WaitGroup, peer uint64, comm *messageChannel) {
 	defer wg.Done()
 	for m := range comm.out {
-		b := m.Pack()
+		b, err := m.MarshalBinary()
+		if err != nil {
+			c.logger.Error("marshal message", zap.Error(err))
+			return
+		}
 		w, err := comm.conn.Write(b)
 		if err != nil {
 			c.logger.Error("writing message to peer", zap.Error(err))
@@ -71,7 +75,7 @@ func (c *Channel) reader(wg *sync.WaitGroup, peer uint64, comm *messageChannel) 
 	defer wg.Done()
 	for {
 		var m Message
-		err := m.ReadFrom(comm.conn)
+		_, err := m.ReadFrom(comm.conn)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				c.logger.Error("reading message from peer", zap.Error(err))
