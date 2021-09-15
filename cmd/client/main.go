@@ -70,10 +70,14 @@ func main() {
 	}
 	logCfg.OutputPaths = []string{"stderr"}
 	logger, err = logCfg.Build()
-
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// redirect stdlib log output to logger, since some packages
+	// are leaking log output and I have no way to redirect them
+	undo := zap.RedirectStdLog(logger)
+	defer undo()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

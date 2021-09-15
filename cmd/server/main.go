@@ -58,6 +58,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// redirect stdlib log output to logger, since some packages
+	// are leaking log output and I have no way to redirect them
+	undo := zap.RedirectStdLog(logger)
+	defer undo()
+
 	bundle, err := getConfig(*configPath)
 	if err != nil {
 		logger.Fatal("loading config file", zap.Error(err))
