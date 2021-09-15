@@ -171,6 +171,7 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		rw.WriteHeader(http.StatusBadGateway)
 		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
+	proxy.ErrorLog = zap.NewStdLog(opts.Logger)
 
 	c := make(chan net.Conn, 32)
 	go func() {

@@ -43,6 +43,7 @@ func (g *Gateway) httpHandler() http.Handler {
 			profiler.GatewayRequests.WithLabelValues("success", "forward").Add(1)
 			return nil
 		},
+		ErrorLog: zap.NewStdLog(g.Logger),
 	}
 }
 
