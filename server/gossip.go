@@ -66,7 +66,7 @@ func (s *Server) NotifyJoin(node *memberlist.Node) {
 		logger.Fatal("gossip: new peer has the same ID as current node", zap.Uint64("self", s.PeerID()))
 	}
 
-	s.logger.Info("gossip: new peer discovered via gossip")
+	logger.Info("gossip: new peer discovered via gossip")
 
 	if s.meta.RespondOnly {
 		logger.Info("gossip: current peer is configured to respond connections only, acting as responder")
