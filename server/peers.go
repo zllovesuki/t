@@ -130,7 +130,7 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 
 func (s *Server) handlePeerEvents() {
 	for peer := range s.peers.Notify() {
-		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peerID", peer.Peer()), zap.String("protocol", peer.Protocol().String()))
+		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peer", peer.Peer()), zap.String("protocol", peer.Protocol().String()))
 		// update our peer graph in a different goroutine with closure
 		// as this may block
 		go func(p multiplexer.Peer) {
@@ -148,7 +148,7 @@ func (s *Server) handlePeerEvents() {
 					c.Conn.Close()
 				}
 			}
-			s.logger.Debug("exiting peer streams handler", zap.Uint64("peerID", p.Peer()))
+			s.logger.Debug("exiting peer streams handler", zap.Uint64("peer", p.Peer()))
 		}(peer)
 		// handle forward request from peers
 		go peer.Start(s.parentCtx)
@@ -157,14 +157,15 @@ func (s *Server) handlePeerEvents() {
 		// but only one side of the session can
 		go func(p multiplexer.Peer) {
 			if p.Initiator() {
+				s.logger.Debug("skip openning message stream as initiator", zap.Uint64("peer", p.Peer()))
 				return
 			}
 			c, err := p.Messaging(s.parentCtx)
 			if err != nil {
-				s.logger.Error("opening messaging stream", zap.Error(err), zap.Uint64("Peer", p.Peer()))
+				s.logger.Error("opening messaging stream", zap.Error(err), zap.Uint64("peer", p.Peer()))
 				return
 			}
-			s.openMessaging(c, p.Peer())
+			go s.openMessaging(c, p.Peer())
 		}(peer)
 
 		// remove peer if they disconnected before gossip found out
@@ -181,16 +182,13 @@ func (s *Server) handlePeerEvents() {
 }
 
 func (s *Server) openMessaging(c net.Conn, peer uint64) {
+	s.logger.Debug("opening message stream with peer", zap.Uint64("peer", peer))
 	ch := s.messaging.Register(peer, c)
 	s.handlePeerMessaging(ch, peer)
 }
 
 func (s *Server) removePeer(peer uint64) {
-	if s.peers.Get(peer) == nil {
-		s.logger.Info("removing non-existent peer", zap.Uint64("peerID", peer))
-		return
-	}
-	s.logger.Info("removing disconnected peer", zap.Uint64("peerID", peer))
+	s.logger.Info("removing disconnected peer", zap.Uint64("peer", peer))
 	s.peers.Remove(peer)
 	s.peerGraph.RemovePeer(peer)
 	s.membershipCh <- struct{}{}
