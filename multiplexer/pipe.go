@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	bufferSize = 32 * 1024
+	bufferSize = 8 * 1024
 )
 
 var copyBufPool = sync.Pool{
