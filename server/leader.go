@@ -163,6 +163,7 @@ func (s *Server) checkACMECerts() {
 			s.logger.Error("leader: exporting bundle failed when renewal was successful")
 			return
 		}
+		renewed = true
 	}
 
 	b, err := json.Marshal(&bundle)

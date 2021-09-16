@@ -40,6 +40,7 @@ func (s *Server) handlePeerMessaging(ch <-chan messaging.Message, peer uint64) {
 				if err := s.certManager.ImportBundle(b, !s.config.Debug); err != nil {
 					s.logger.Error("importing acme bundle from announcement", zap.Error(err))
 				}
+				s.logger.Info("updated acme bundle from announcement", zap.Uint64("from", m.From))
 			case messaging.MessageTest:
 				s.logger.Debug("incoming messaging test", zap.Binary("data", m.Data), zap.Uint64("from", m.From))
 			}
