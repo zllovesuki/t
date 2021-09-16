@@ -62,7 +62,8 @@ func (c *Channel) Run(ctx context.Context) {
 				close(c.outgoing)
 			}
 			return
-		case c.outgoing <- <-c.incoming:
+		case x := <-c.incoming:
+			c.outgoing <- x
 		}
 	}
 }
