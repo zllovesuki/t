@@ -16,6 +16,7 @@ import (
 	_ "github.com/zllovesuki/t/workaround"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var Version = "dev"
@@ -76,7 +77,10 @@ func main() {
 
 	// redirect stdlib log output to logger, since some packages
 	// are leaking log output and I have no way to redirect them
-	undo := zap.RedirectStdLog(logger)
+	undo, err := zap.RedirectStdLogAt(logger, zapcore.DebugLevel)
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer undo()
 
 	ctx, cancel := context.WithCancel(context.Background())

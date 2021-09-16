@@ -25,6 +25,7 @@ import (
 
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var Version = "dev"
@@ -60,7 +61,10 @@ func main() {
 
 	// redirect stdlib log output to logger, since some packages
 	// are leaking log output and I have no way to redirect them
-	undo := zap.RedirectStdLog(logger)
+	undo, err := zap.RedirectStdLogAt(logger, zapcore.DebugLevel)
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer undo()
 
 	bundle, err := getConfig(*configPath)
