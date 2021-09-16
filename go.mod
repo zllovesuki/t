@@ -4,7 +4,6 @@ go 1.16
 
 require (
 	github.com/eggsampler/acme/v3 v3.2.1
-	github.com/getlantern/idletiming v0.0.0-20201229174729-33d04d220c4e
 	github.com/gookit/config/v2 v2.0.25
 	github.com/hashicorp/memberlist v0.2.4
 	github.com/libp2p/go-mplex v0.3.1-0.20210721191624-fc8b95830f5c

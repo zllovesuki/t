@@ -6,8 +6,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/getlantern/idletiming"
-	"github.com/zllovesuki/t/shared"
+	"log"
+
 	"github.com/zllovesuki/t/util"
 
 	"github.com/libp2p/go-yamux/v2"
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	bufferSize = 8 * 1024
+	bufferSize = 16 * 1024
 )
 
 var copyBufPool = sync.Pool{
@@ -40,18 +40,13 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 	var wg sync.WaitGroup
 	err := make(chan error, 2)
 
-	s := idletiming.Conn(src, shared.ConnIdleTimeout, func() {
-		dst.Close()
-	})
-
 	wg.Add(2)
-	go pipe(ctx, &wg, err, dst, s)
-	go pipe(ctx, &wg, err, s, dst)
+	go pipe(ctx, &wg, err, dst, src)
+	go pipe(ctx, &wg, err, src, dst)
 	go func() {
 		wg.Wait()
+		log.Printf("pipe closed: %s <-> %s", src.LocalAddr(), dst.RemoteAddr())
 		close(err)
-		dst.Close()
-		src.Close()
 	}()
 
 	return err
@@ -61,7 +56,18 @@ func pipe(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error, dst, sr
 	defer wg.Done()
 	pBuf := copyBufPool.Get().(*[]byte)
 	defer copyBufPool.Put(pBuf)
-	if _, err := io.CopyBuffer(dst, util.NewCtxReader(ctx, src), *pBuf); err != nil {
+
+	// io.Copy yeet the EOF from reader and turns it into nil.
+	// therefore, in the previous iteration, one side of pipe
+	// never returns and therefore keeping the pipe from closing.
+	// Here we will forcibly close both ends as soon as io.Copy returns.
+	_, err := io.CopyBuffer(dst, util.NewCtxReader(ctx, src), *pBuf)
+	log.Printf("CopyBuffer: (%s <-> %s) %s", src.LocalAddr(), dst.RemoteAddr(), err)
+
+	src.Close()
+	dst.Close()
+
+	if err != nil {
 		errChan <- err
 		return
 	}
