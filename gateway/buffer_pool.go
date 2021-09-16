@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	bufferSize = 32 * 1024
+	bufferSize = 16 * 1024
 )
 
 type bufferPool struct {

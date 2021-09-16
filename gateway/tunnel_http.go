@@ -27,8 +27,9 @@ func (g *Gateway) httpHandler() http.Handler {
 			DialContext: func(c context.Context, network, addr string) (net.Conn, error) {
 				return g.Multiplexer.Direct(c, g.link(addr, alpn.HTTP.String()))
 			},
-			MaxConnsPerHost:       30,
-			MaxIdleConnsPerHost:   10,
+			// TODO(zllovesuki): Make MaxConnsPerHost configurable
+			MaxConnsPerHost:       15,
+			MaxIdleConnsPerHost:   3,
 			IdleConnTimeout:       shared.ConnIdleTimeout,
 			ResponseHeaderTimeout: time.Second * 30,
 			ExpectContinueTimeout: time.Second * 3,
@@ -54,6 +55,9 @@ func (g *Gateway) errorHandler(rw http.ResponseWriter, r *http.Request, e error)
 		profiler.GatewayRequests.WithLabelValues("not_found", "forward").Add(1)
 		return
 	}
+
+	g.Logger.Debug("forwarding http/https request", zap.Error(e))
+
 	if multiplexer.IsTimeout(e) {
 		rw.WriteHeader(http.StatusGatewayTimeout)
 		fmt.Fprintf(rw, "Destination %s is taking too long to respond.", r.URL.Hostname())
@@ -64,7 +68,6 @@ func (g *Gateway) errorHandler(rw http.ResponseWriter, r *http.Request, e error)
 		// this is expected
 		return
 	}
-	g.Logger.Error("forwarding http/https request", zap.Error(e))
 	rw.WriteHeader(http.StatusServiceUnavailable)
 	fmt.Fprint(rw, "An unexpected error has occurred while attempting to forward to destination.")
 	profiler.GatewayRequests.WithLabelValues("error", "forward").Add(1)
