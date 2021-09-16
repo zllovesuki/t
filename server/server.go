@@ -228,6 +228,7 @@ func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Li
 	if p == nil {
 		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
+	s.logger.Debug("opening new forwarding link", zap.Object("link", link))
 	return p.Bidirectional(ctx, conn, link)
 }
 
@@ -236,5 +237,6 @@ func (s *Server) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, e
 	if p == nil {
 		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
+	s.logger.Debug("opening new direct connection link", zap.Object("link", link))
 	return p.Direct(ctx, link)
 }

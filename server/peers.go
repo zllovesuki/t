@@ -143,6 +143,7 @@ func (s *Server) handlePeerEvents() {
 					go s.openMessaging(c.Conn, p.Peer())
 					continue
 				}
+				s.logger.Debug("forwarding bidirectional stream", zap.Object("link", c.Link))
 				if _, err := s.Forward(s.parentCtx, c.Conn, c.Link); err != nil {
 					s.logger.Error("forwarding bidirectional stream", zap.Error(err), zap.Object("link", c.Link))
 					c.Conn.Close()
