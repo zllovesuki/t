@@ -13,6 +13,7 @@ import (
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/messaging"
 	"github.com/zllovesuki/t/multiplexer"
+	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
@@ -229,6 +230,7 @@ func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Li
 		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
 	s.logger.Debug("opening new forwarding link", zap.Object("link", link))
+	profiler.ConnectionStats.WithLabelValues("new", "bidirectional").Inc()
 	return p.Bidirectional(ctx, conn, link)
 }
 
@@ -238,5 +240,6 @@ func (s *Server) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, e
 		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
 	}
 	s.logger.Debug("opening new direct connection link", zap.Object("link", link))
+	profiler.ConnectionStats.WithLabelValues("new", "direct").Inc()
 	return p.Direct(ctx, link)
 }

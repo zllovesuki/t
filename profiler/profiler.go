@@ -12,6 +12,7 @@ func StartProfiler(addr string) {
 
 	r := prometheus.NewRegistry()
 	r.MustRegister(GatewayRequests)
+	r.MustRegister(ConnectionStats)
 
 	m.Handle("/", debug())
 	m.Handle("/metrics", promhttp.HandlerFor(r, promhttp.HandlerOpts{}))
