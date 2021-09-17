@@ -171,14 +171,18 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		rw.WriteHeader(http.StatusBadGateway)
 		fmt.Fprintf(rw, "Forwarding target returned error: %s", e.Error())
 	}
-	proxy.ErrorLog = zap.NewStdLog(opts.Logger)
+	proxy.ErrorLog = zap.NewStdLog(logger)
 
 	c := make(chan net.Conn, 32)
+	accepter := &httpAccepter{
+		ch: c,
+	}
+	forwarder := &http.Server{
+		Handler:  proxy,
+		ErrorLog: zap.NewStdLog(logger),
+	}
 	go func() {
-		accepter := &httpAccepter{
-			ch: c,
-		}
-		http.Serve(accepter, proxy)
+		forwarder.Serve(accepter)
 	}()
 
 	go func() {
