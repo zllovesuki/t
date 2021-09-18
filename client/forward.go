@@ -61,7 +61,9 @@ func Forward(ctx context.Context, opts ForwardOpts) {
 		go func() {
 			rConn, err := getConn(opts.Debug, u)
 			if err != nil {
-				logger.Fatal("connecting to gateway", zap.Error(err))
+				logger.Error("connecting to gateway", zap.Error(err))
+				lConn.Close()
+				return
 			}
 			logger.Info("new connection", zap.String("RemoteAddr", lConn.RemoteAddr().String()))
 			multiplexer.Connect(x, lConn, rConn)

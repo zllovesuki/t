@@ -30,8 +30,8 @@ const (
 
 type TunnelOpts struct {
 	Logger    *zap.Logger
+	AppName   string
 	Forward   string
-	Target    string
 	Where     string
 	Proto     int
 	Debug     bool
@@ -54,31 +54,29 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		logger.Fatal("unsupported scheme. valid schemes: http, https, tcp", zap.String("schema", u.Scheme))
 	}
 
-	peerTarget := opts.Target
-	if opts.Where != DefaultWhere {
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: opts.Debug,
-					NextProtos:         []string{"http/1.1"},
-				},
+	var peerTarget string
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: opts.Debug,
+				NextProtos:         []string{"http/1.1"},
 			},
-			Timeout: time.Second * 5,
-		}
-		resp, err := client.Get(fmt.Sprintf("https://%s/where", opts.Where))
-		if err != nil {
-			logger.Fatal("auto discovering peer", zap.Error(err))
-		}
-		if resp.StatusCode != http.StatusOK {
-			logger.Fatal("auto discovering returns non-200 response code", zap.Int("code", resp.StatusCode))
-		}
-		var w shared.Where
-		if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
-			logger.Fatal("cannot recode auto discovering result", zap.Error(err))
-		}
-		resp.Body.Close()
-		peerTarget = fmt.Sprintf("%s:%d", w.Addr, w.Port)
+		},
+		Timeout: time.Second * 5,
 	}
+	resp, err := client.Get(fmt.Sprintf("https://%s/where", opts.Where))
+	if err != nil {
+		logger.Fatal("auto discovering peer", zap.Error(err))
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Fatal("auto discovering returns non-200 response code", zap.Int("code", resp.StatusCode))
+	}
+	var w shared.Where
+	if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
+		logger.Fatal("cannot recode auto discovering result", zap.Error(err))
+	}
+	resp.Body.Close()
+	peerTarget = fmt.Sprintf("%s:%d", w.Addr, w.Port)
 
 	var connector interface{}
 	var conn net.Conn
@@ -141,7 +139,7 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		if runtime.GOOS == "windows" {
 			ext = ".exe"
 		}
-		fmt.Printf("ssh -o ServerAliveInterval=15 -o ProxyCommand=\".%ct-client-%s-%s%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, runtime.GOOS, runtime.GOARCH, ext, g.Hostname)
+		fmt.Printf("ssh -o ProxyCommand=\".%c%s%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, opts.AppName, ext, g.Hostname)
 	default:
 	}
 	fmt.Printf("\nYour Hostname: %+v\n\n", g.Hostname)

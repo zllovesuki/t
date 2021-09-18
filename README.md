@@ -39,26 +39,31 @@ The peers have to be publicly accessible on the Internet (they are the gateway, 
 
 # How to Use (Advanced)
 
-Run `t-client-${GOOS}-${GOARCH} tunnel -where tunnel.example.com -forward tcp://127.0.0.1:3000` (notice the `tcp://`), and you should see a FQDN hostname ready to be used to tunnel TCP connection.
-
-Note that this will disable HTTP(s) requests forwarding.
-
-For Stdin/Stdout usage, use `t-client-${GOOS}-${GOARCH} connect`:
 ```
-  -debug
-        verbose logging and disable TLS verification
-  -url string
-        the URL as shown by the tunnel subcommand (default "https://exhaust-timing-harmless-saved-startup.tunnel.example.com")
-```
+NAME:
+   client - t tunnel client for amd64 on linux
 
-For listening TCP connections and forward them, use `t-client-${GOOS}-${GOARCH} forward`:
-```
-  -debug
-        verbose logging and disable TLS verification
-  -listen string
-        listen for tcp connections and forward them via tunnel (default ":5678")
-  -url string
-        the URL as shown by the tunnel subcommand (default "https://exhaust-timing-harmless-saved-startup.tunnel.example.com")
+USAGE:
+   client [global options] command [command options]
+
+VERSION:
+   dev
+
+DESCRIPTION:
+   like ngrok, but ambitious
+
+COMMANDS:
+   tunnel   Create a new tunnel to an application of your choosing
+   connect  Proxy TCP connection through the tunnel via stdin/stdout
+   forward  Listen for connections locally and forward them via the tunnel
+
+GLOBAL OPTIONS:
+   --debug        Enable verbose logging and disable TLS verification (default: false)
+   --help, -h     show help (default: false)
+   --version, -v  print the version (default: false)
+
+COPYRIGHT:
+   Rachel Chen (@zllovesuki), licensed under MIT.
 ```
 
 # How to Build
