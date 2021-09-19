@@ -25,7 +25,7 @@ var (
 // PeerIDs. If they happened to have the same PeerID, they will panic to restart.
 type PeerMap struct {
 	self   uint64
-	peers  *sync.Map
+	peers  sync.Map
 	logger *zap.Logger
 	notify chan multiplexer.Peer
 	num    *uint64
@@ -33,7 +33,7 @@ type PeerMap struct {
 
 func NewPeerMap(logger *zap.Logger, self uint64) *PeerMap {
 	return &PeerMap{
-		peers:  &sync.Map{},
+		peers:  sync.Map{},
 		notify: make(chan multiplexer.Peer, 16),
 		logger: logger,
 		num:    new(uint64),
@@ -69,8 +69,8 @@ func (s *PeerMap) NewPeer(ctx context.Context, proto protocol.Protocol, conf mul
 
 	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d), zap.String("protocol", proto.String()))
 
-	atomic.AddUint64(s.num, 1)
 	s.peers.Store(conf.Peer, p)
+	atomic.AddUint64(s.num, 1)
 	s.notify <- p
 
 	return nil
@@ -124,11 +124,11 @@ func (s *PeerMap) Get(peer uint64) multiplexer.Peer {
 }
 
 func (s *PeerMap) Remove(peer uint64) error {
-	atomic.AddUint64(s.num, ^uint64(0))
 	pp, ok := s.peers.LoadAndDelete(peer)
 	if !ok {
 		return nil
 	}
+	atomic.AddUint64(s.num, ^uint64(0))
 	p := pp.(multiplexer.Peer)
 	return p.Bye()
 }
