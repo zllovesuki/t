@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -135,11 +134,7 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 		fmt.Printf("TCP connections will be forwarded to: %+v\n\n", opts.Forward)
 		fmt.Printf("Example usages:\n\n")
 		fmt.Printf("SSH:\n")
-		ext := ""
-		if runtime.GOOS == "windows" {
-			ext = ".exe"
-		}
-		fmt.Printf("ssh -o ProxyCommand=\".%c%s%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, opts.AppName, ext, g.Hostname)
+		fmt.Printf("ssh -o ProxyCommand=\".%c%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, opts.AppName, g.Hostname)
 	default:
 	}
 	fmt.Printf("\nYour Hostname: %+v\n\n", g.Hostname)
