@@ -36,6 +36,7 @@ type TunnelOpts struct {
 	Debug     bool
 	Overwrite bool
 	Version   string
+	Concise   bool
 	Sigs      chan os.Signal
 }
 
@@ -125,19 +126,23 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 	if opts.Overwrite {
 		hostHeader = tunnelURL.Hostname()
 	}
-
-	fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
-	switch u.Scheme {
-	case "http", "https":
-		fmt.Printf("HTTPS requests will be forwarded to: %+v (Host: %s)\n", opts.Forward, hostHeader)
-	case "tcp":
-		fmt.Printf("TCP connections will be forwarded to: %+v\n\n", opts.Forward)
-		fmt.Printf("Example usages:\n\n")
-		fmt.Printf("SSH:\n")
-		fmt.Printf("ssh -o ProxyCommand=\".%c%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, opts.AppName, g.Hostname)
-	default:
+	if opts.Concise {
+		fmt.Printf("%s\n", g.Hostname)
+	} else {
+		fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
+		switch u.Scheme {
+		case "http", "https":
+			fmt.Printf("HTTPS requests will be forwarded to: %+v (Host: %s)\n", opts.Forward, hostHeader)
+		case "tcp":
+			fmt.Printf("TCP connections will be forwarded to: %+v\n\n", opts.Forward)
+			fmt.Printf("Example usages:\n\n")
+			fmt.Printf("SSH:\n")
+			fmt.Printf("ssh -o ProxyCommand=\".%c%s connect -url %s\" user@127.0.0.1\n", os.PathSeparator, opts.AppName, g.Hostname)
+		default:
+		}
+		fmt.Printf("\nYour Hostname: %+v\n", g.Hostname)
+		fmt.Printf("\n%s\n\n", strings.Repeat("=", 50))
 	}
-	fmt.Printf("\nYour Hostname: %+v\n\n", g.Hostname)
 
 	go p.Start(ctx)
 	go func() {

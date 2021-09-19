@@ -99,6 +99,12 @@ func main() {
 						Value:   int(protocol.Mplex),
 						Usage:   "Specify the protocol for the tunnel. 1: Yamux; 2: mplex; 3: QUIC",
 					},
+					&cli.BoolFlag{
+						Name:    "concise",
+						Aliases: []string{"c"},
+						Value:   false,
+						Usage:   "Print only the hostname to stdout without usage example",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					client.Tunnel(c.Context, client.TunnelOpts{
@@ -108,6 +114,7 @@ func main() {
 						Where:     c.String("where"),
 						Proto:     c.Int("protocol"),
 						Debug:     c.Bool("debug"),
+						Concise:   c.Bool("concise"),
 						Overwrite: c.Bool("overwrite"),
 						Version:   Version,
 						Sigs:      sigs,
