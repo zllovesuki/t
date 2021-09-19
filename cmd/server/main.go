@@ -114,26 +114,63 @@ func main() {
 		logger.Fatal("unable to use the provided CA bundle")
 	}
 
+	// we are not sure what people are using for their peer certficiates,
+	// so we will included good old' non-EC ciphers
 	peerTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
 		RootCAs:                  caCertPool,
 		ClientCAs:                caCertPool,
 		Certificates:             []tls.Certificate{peerCert},
 		ClientAuth:               tls.RequireAndVerifyClientCert,
-		MinVersion:               tls.VersionTLS12,
-		PreferServerCipherSuites: true,
 		VerifyConnection:         checkPeerSAN("t_Peer"),
 		NextProtos:               []string{alpn.Multiplexer.String()},
+		PreferServerCipherSuites: true, // kept for Go 1.16 compat
+		MinVersion:               tls.VersionTLS12,
+		// https://wiki.mozilla.org/Security/Server_Side_TLS (Intermediate compatibility)
+		CipherSuites: []uint16{
+			// TLS 1.3 ciphers
+			tls.TLS_AES_128_GCM_SHA256,
+			tls.TLS_AES_256_GCM_SHA384,
+			tls.TLS_CHACHA20_POLY1305_SHA256,
+			// TLS 1.2 ciphers
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		},
+		CurvePreferences: []tls.CurveID{
+			tls.X25519, tls.CurveP256, tls.CurveP384,
+		},
 	}
 
+	// our acme cert generation uses ECDSA (P-256), thus we will skip
+	// ciphers that do not do elliptic curve DH
 	gatwayTLSConfig := &tls.Config{
 		Rand:                     rand.Reader,
 		GetCertificate:           certManager.GetCertificatesFunc,
 		ClientAuth:               tls.NoClientCert,
-		MinVersion:               tls.VersionTLS11,
-		PreferServerCipherSuites: true,
 		VerifyConnection:         checkClientSNI(bundle.Web.Domain),
 		NextProtos:               alpn.Protos,
+		PreferServerCipherSuites: true, // kept for Go 1.16 compat
+		MinVersion:               tls.VersionTLS12,
+		// https://wiki.mozilla.org/Security/Server_Side_TLS (Intermediate compatibility)
+		CipherSuites: []uint16{
+			// TLS 1.3 ciphers
+			tls.TLS_AES_128_GCM_SHA256,
+			tls.TLS_AES_256_GCM_SHA384,
+			tls.TLS_CHACHA20_POLY1305_SHA256,
+			// TLS 1.2 ciphers
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+		},
+		CurvePreferences: []tls.CurveID{
+			tls.X25519, tls.CurveP256, tls.CurveP384,
+		},
 	}
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
