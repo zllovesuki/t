@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/gateway"
@@ -137,6 +138,8 @@ func main() {
 
 	peerAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, bundle.Multiplexer.Peer)
 	gatewayAddr := fmt.Sprintf("%s:%d", bundle.Network.BindAddr, *gatewayPort)
+
+	defer time.Sleep(time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
