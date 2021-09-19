@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
-	"time"
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/protocol"
@@ -135,11 +134,6 @@ func (p *Mplex) Initiator() bool {
 
 func (p *Mplex) Peer() uint64 {
 	return p.config.Peer
-}
-
-func (p *Mplex) Ping() (time.Duration, error) {
-	// TODO(zllovesuki): fill this stub
-	return 0, nil
 }
 
 func (p *Mplex) Messaging(ctx context.Context) (net.Conn, error) {

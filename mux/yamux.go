@@ -168,10 +168,6 @@ func (p *Yamux) Peer() uint64 {
 	return p.config.Peer
 }
 
-func (p *Yamux) Ping() (time.Duration, error) {
-	return p.session.Ping()
-}
-
 func (p *Yamux) Messaging(ctx context.Context) (net.Conn, error) {
 	n, err := p.session.Open(ctx)
 	if err != nil {

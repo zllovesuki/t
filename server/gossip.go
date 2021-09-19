@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -199,6 +200,26 @@ func (s *Server) NotifyMsg(msg []byte) {
 
 func (s *Server) GetBroadcasts(overhead, limit int) [][]byte {
 	return s.broadcasts.GetBroadcasts(overhead, limit)
+}
+
+// ======== Ping ========
+
+var _ memberlist.PingDelegate = &Server{}
+
+func (s *Server) AckPayload() []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(s.peers.Len()))
+	return b
+}
+
+func (s *Server) NotifyPingComplete(other *memberlist.Node, rtt time.Duration, payload []byte) {
+	var m Meta
+	if err := m.UnmarshalBinary(other.Meta); err != nil {
+		s.logger.Error("unmarshal node meta from ping", zap.Error(err))
+		return
+	}
+	n := binary.BigEndian.Uint64(payload)
+	s.logger.Info("ping", zap.Uint64("Peer", m.PeerID), zap.Duration("rtt", rtt), zap.Uint64("numPeers", n))
 }
 
 // ======== Gossip Helpers ========

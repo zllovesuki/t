@@ -126,6 +126,7 @@ func New(conf Config) (*Server, error) {
 	c.PushPullInterval = time.Second * 30 // faster convergence
 	c.Events = s
 	c.Delegate = s
+	c.Ping = s
 	c.Name = fmt.Sprintf("%s:%d/%d", conf.Network.AdvertiseAddr, peerPort, self)
 	c.LogOutput = io.Discard
 

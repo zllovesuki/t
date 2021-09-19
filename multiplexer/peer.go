@@ -3,7 +3,6 @@ package multiplexer
 import (
 	"context"
 	"net"
-	"time"
 
 	"github.com/zllovesuki/t/multiplexer/protocol"
 )
@@ -28,8 +27,6 @@ type Peer interface {
 	Protocol() protocol.Protocol
 	// Peer returns the uint64 identifier of the connected Peer
 	Peer() uint64
-	// Ping is useful for checking latency and health
-	Ping() (time.Duration, error)
 	// Messaging opens a dedicated bidirectional stream to handle in-band control messages
 	Messaging(context.Context) (net.Conn, error)
 	// Bidirectional establishs a virtual link between the Source and Destination via this Peer

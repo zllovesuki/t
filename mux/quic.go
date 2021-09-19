@@ -166,11 +166,6 @@ func (p *QUIC) Peer() uint64 {
 	return p.config.Peer
 }
 
-func (p *QUIC) Ping() (time.Duration, error) {
-	// TODO(zllovesuki): fill this stub
-	return 0, nil
-}
-
 func (p *QUIC) Messaging(ctx context.Context) (net.Conn, error) {
 	n, err := p.session.OpenStream()
 	if err != nil {

@@ -56,18 +56,13 @@ func (s *PeerMap) NewPeer(ctx context.Context, proto protocol.Protocol, conf mul
 		return err
 	}
 
-	d, err := p.Ping()
-	if err != nil {
-		return errors.Wrap(err, "cannot ping peer")
-	}
-
 	select {
 	case <-p.NotifyClose():
 		return errors.New("peer closed after negotiation")
 	case <-time.After(conf.Wait):
 	}
 
-	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.Duration("rtt", d), zap.String("protocol", proto.String()))
+	s.logger.Debug("Peer negotiation result", zap.Uint64("peerID", conf.Peer), zap.String("protocol", proto.String()))
 
 	s.peers.Store(conf.Peer, p)
 	atomic.AddUint64(s.num, 1)
