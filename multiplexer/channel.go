@@ -8,6 +8,7 @@ import (
 // Channel is a helper struct to coordinate the sending and closing
 // of a channel between different goroutines to avoid data race
 type Channel struct {
+	_        uint64 // for sync/atomic
 	outgoing chan LinkConnection
 	incoming chan LinkConnection
 	closer   chan struct{}

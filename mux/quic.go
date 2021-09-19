@@ -31,6 +31,7 @@ func quicConfigCommon() *quic.Config {
 }
 
 type QUIC struct {
+	_               uint64 // for sync/atomic
 	logger          *zap.Logger
 	session         quic.Session
 	config          multiplexer.Config

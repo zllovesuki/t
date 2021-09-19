@@ -23,10 +23,10 @@ import (
 )
 
 type Server struct {
+	id                 uint64
 	parentCtx          context.Context
 	logger             *zap.Logger
 	config             Config
-	id                 uint64
 	meta               Meta
 	metaBytes          atomic.Value
 	peers              *state.PeerMap

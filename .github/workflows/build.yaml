@@ -44,6 +44,13 @@ jobs:
           CGO_ENABLED=0 GOARCH=amd64 GOOS=freebsd go build -tags 'osusergo netgo' -ldflags "-X 'main.Version=$BUILD_VERSION' -s -w -extldflags -static" -a -o bin/t-client-freebsd-amd64 ./cmd/client
           CGO_ENABLED=0 GOARCH=amd64 GOOS=freebsd go build -tags 'osusergo netgo' -ldflags "-X 'main.Version=$BUILD_VERSION' -s -w -extldflags -static" -a -o bin/t-server-freebsd-amd64 ./cmd/server
 
+      - name: Build linux/arm
+        env:
+          BUILD_VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          CGO_ENABLED=0 GOARCH=arm GOARM=6 GOOS=freebsd go build -tags 'osusergo netgo' -ldflags "-X 'main.Version=$BUILD_VERSION' -s -w -extldflags -static" -a -o bin/t-client-linux-arm ./cmd/client
+          CGO_ENABLED=0 GOARCH=arm GOARM=6 GOOS=freebsd go build -tags 'osusergo netgo' -ldflags "-X 'main.Version=$BUILD_VERSION' -s -w -extldflags -static" -a -o bin/t-server-linux-arm ./cmd/server
+
       - name: Release Binaries
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
