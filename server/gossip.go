@@ -10,6 +10,7 @@ import (
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/alpn"
+	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
@@ -218,8 +219,10 @@ func (s *Server) NotifyPingComplete(other *memberlist.Node, rtt time.Duration, p
 		s.logger.Error("unmarshal node meta from ping", zap.Error(err))
 		return
 	}
+
 	n := binary.BigEndian.Uint64(payload)
-	s.logger.Info("ping", zap.Uint64("Peer", m.PeerID), zap.Duration("rtt", rtt), zap.Uint64("numPeers", n))
+	s.logger.Debug("ping", zap.Uint64("Peer", m.PeerID), zap.Duration("rtt", rtt), zap.Uint64("numPeers", n))
+	profiler.PeerLatencyHist.Observe(float64(rtt / time.Millisecond))
 }
 
 // ======== Gossip Helpers ========

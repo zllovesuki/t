@@ -11,6 +11,7 @@ import (
 
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/alpn"
+	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/server"
 	"github.com/zllovesuki/t/shared"
 
@@ -93,9 +94,13 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 		switch cs.NegotiatedProtocol {
 		case alpn.Unknown.String(), alpn.HTTP.String():
 			g.Logger.Debug("forward http connection")
+			profiler.GatewayReqsType.WithLabelValues("http").Inc()
+
 			g.httpTunnelAcceptor.ch <- conn
 		case alpn.Raw.String():
 			g.Logger.Debug("forward raw connection")
+			profiler.GatewayReqsType.WithLabelValues("raw").Inc()
+
 			_, err := g.Multiplexer.Forward(ctx, conn, g.link(cs.ServerName, cs.NegotiatedProtocol))
 			if err != nil {
 				g.Logger.Error("establish raw link error", zap.Error(err))
@@ -103,9 +108,13 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 			}
 		case alpn.Multiplexer.String():
 			g.Logger.Error("received alpn proposal for multiplexer on gateway")
+			profiler.GatewayReqsType.WithLabelValues("multiplexer").Inc()
+
 			conn.Close()
 		default:
 			g.Logger.Error("unknown alpn proposal", zap.String("proposal", cs.NegotiatedProtocol))
+			profiler.GatewayReqsType.WithLabelValues("error").Inc()
+
 			conn.Close()
 		}
 	}

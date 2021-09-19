@@ -25,7 +25,8 @@ func (g *Gateway) httpHandler() http.Handler {
 		},
 		Transport: &http.Transport{
 			DialContext: func(c context.Context, network, addr string) (net.Conn, error) {
-				return g.Multiplexer.Direct(c, g.link(addr, alpn.HTTP.String()))
+				conn, err := g.Multiplexer.Direct(c, g.link(addr, alpn.HTTP.String()))
+				return conn, err
 			},
 			// TODO(zllovesuki): Make MaxConnsPerHost configurable
 			MaxConnsPerHost:       15,
