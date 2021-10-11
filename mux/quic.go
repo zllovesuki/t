@@ -89,7 +89,7 @@ func (p *QUIC) Start(ctx context.Context) {
 				if !errors.Is(err, io.EOF) {
 					p.logger.Error("accepting stream from peers", zap.Error(err))
 				}
-				p.closeTimeoutCh()
+				p.Bye()
 				return
 			}
 			go p.streamHandshake(ctx, conn)

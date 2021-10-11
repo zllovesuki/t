@@ -61,6 +61,7 @@ func (p *Mplex) Start(ctx context.Context) {
 				if !errors.Is(err, io.EOF) {
 					p.logger.Error("accepting stream from peers", zap.Error(err))
 				}
+				p.Bye()
 				return
 			}
 			go p.streamHandshake(ctx, conn)
