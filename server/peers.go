@@ -21,16 +21,16 @@ func (s *Server) peerQUICHandshake(sess quic.Session) {
 	defer cancel()
 
 	var err error
+	var conn quic.Stream
 	logger := s.logger
 	defer func() {
 		if err == nil {
 			return
 		}
-		logger.Error("error during quic peer handshake", zap.Error(err))
 		sess.CloseWithError(quic.ApplicationErrorCode(0), err.Error())
 	}()
 
-	conn, err := sess.AcceptStream(ctx)
+	conn, err = sess.AcceptStream(ctx)
 	if err != nil {
 		logger.Error("error accepting quic handshake stream", zap.Error(err))
 		return
@@ -47,11 +47,6 @@ func (s *Server) peerTLSHandshake(conn net.Conn) {
 		if err == nil {
 			return
 		}
-		if errors.Is(err, state.ErrSessionAlreadyEstablished) {
-			logger.Info("reusing established session")
-			return
-		}
-		logger.Error("error during peer handshake", zap.Error(err))
 		conn.Close()
 	}()
 
@@ -59,6 +54,14 @@ func (s *Server) peerTLSHandshake(conn net.Conn) {
 }
 
 func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn net.Conn, acceptableProtocols []protocol.Protocol) (err error) {
+	defer func() {
+		if errors.Is(err, state.ErrSessionAlreadyEstablished) {
+			logger.Info("reusing established session")
+			return
+		}
+		logger.Debug("error during peer handshake", zap.Error(err))
+	}()
+
 	var link multiplexer.Link
 	r := make([]byte, multiplexer.LinkSize)
 
