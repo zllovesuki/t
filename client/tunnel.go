@@ -122,9 +122,9 @@ func Tunnel(ctx context.Context, opts TunnelOpts) {
 	}
 
 	tunnelURL, _ := url.Parse(g.Hostname)
-	hostHeader := u.Hostname()
+	hostHeader := u.Host
 	if opts.Overwrite {
-		hostHeader = tunnelURL.Hostname()
+		hostHeader = tunnelURL.Host
 	}
 	if opts.Concise {
 		fmt.Printf("%s\n", g.Hostname)
