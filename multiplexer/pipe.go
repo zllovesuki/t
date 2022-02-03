@@ -11,7 +11,7 @@ import (
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/util"
 
-	"github.com/libp2p/go-yamux/v2"
+	"github.com/libp2p/go-yamux/v3"
 	"github.com/pkg/errors"
 )
 

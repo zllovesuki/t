@@ -38,7 +38,7 @@ func NewMplexPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 		return nil, err
 	}
 
-	session := multiplex.NewMultiplex(config.Conn.(net.Conn), config.Initiator)
+	session := multiplex.NewMultiplex(config.Conn.(net.Conn), config.Initiator, nil)
 	logger := config.Logger.With(zap.Uint64("PeerID", config.Peer), zap.Bool("Initiator", config.Initiator))
 
 	return &Mplex{

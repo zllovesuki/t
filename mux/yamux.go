@@ -11,7 +11,7 @@ import (
 	"github.com/zllovesuki/t/multiplexer"
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
-	"github.com/libp2p/go-yamux/v2"
+	"github.com/libp2p/go-yamux/v3"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -79,9 +79,9 @@ func NewYamuxPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 	cfg.LogOutput = &zapWriter{logger: logger}
 
 	if config.Initiator {
-		session, err = yamux.Client(config.Conn.(net.Conn), cfg)
+		session, err = yamux.Client(config.Conn.(net.Conn), cfg, nil)
 	} else {
-		session, err = yamux.Server(config.Conn.(net.Conn), cfg)
+		session, err = yamux.Server(config.Conn.(net.Conn), cfg, nil)
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "starting a peer connection")
