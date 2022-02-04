@@ -161,7 +161,7 @@ func (s *Server) handlePeerEvents() {
 		// but only one side of the session can
 		go func(p multiplexer.Peer) {
 			if p.Initiator() {
-				s.logger.Debug("skip openning message stream as initiator", zap.Uint64("peer", p.Peer()))
+				s.logger.Debug("skip opening message stream as initiator", zap.Uint64("peer", p.Peer()))
 				return
 			}
 			c, err := p.Messaging(s.parentCtx)
