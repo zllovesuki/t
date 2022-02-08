@@ -2,34 +2,27 @@ package gateway
 
 import (
 	"net/http/httputil"
-	"sync"
+
+	pool "github.com/libp2p/go-buffer-pool"
 )
 
 const (
-	bufferSize = 16 * 1024
+	bufferSize = 8 * 1024
 )
 
 type bufferPool struct {
-	pool *sync.Pool
 }
 
 func newBufferPool() *bufferPool {
-	return &bufferPool{
-		pool: &sync.Pool{
-			New: func() interface{} {
-				b := make([]byte, bufferSize)
-				return &b
-			},
-		},
-	}
+	return &bufferPool{}
 }
 
 var _ httputil.BufferPool = &bufferPool{}
 
 func (b *bufferPool) Get() []byte {
-	return *b.pool.Get().(*[]byte)
+	return pool.Get(bufferSize)
 }
 
 func (b *bufferPool) Put(buf []byte) {
-	b.pool.Put(&buf)
+	pool.Put(buf)
 }

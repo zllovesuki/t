@@ -11,20 +11,14 @@ import (
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/util"
 
+	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-yamux/v3"
 	"github.com/pkg/errors"
 )
 
 const (
-	bufferSize = 16 * 1024
+	bufferSize = 8 * 1024
 )
-
-var copyBufPool = sync.Pool{
-	New: func() interface{} {
-		b := make([]byte, bufferSize)
-		return &b
-	},
-}
 
 func IsTimeout(err error) bool {
 	t := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, yamux.ErrTimeout)
@@ -56,14 +50,14 @@ func Connect(ctx context.Context, dst, src net.Conn) <-chan error {
 
 func pipe(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error, dir string, dst, src net.Conn) {
 	defer wg.Done()
-	pBuf := copyBufPool.Get().(*[]byte)
-	defer copyBufPool.Put(pBuf)
+	pBuf := pool.Get(bufferSize)
+	defer pool.Put(pBuf)
 
 	// io.Copy yeet the EOF from reader and turns it into nil.
 	// therefore, in the previous iteration, one side of pipe
 	// never returns and therefore keeping the pipe from closing.
 	// Here we will forcibly close both ends as soon as io.Copy returns.
-	n, err := io.CopyBuffer(dst, util.NewCtxReader(ctx, src), *pBuf)
+	n, err := io.CopyBuffer(dst, util.NewCtxReader(ctx, src), pBuf)
 	log.Printf("CopyBuffer: (%s <-> %s) %s", src.LocalAddr(), dst.RemoteAddr(), err)
 
 	src.Close()

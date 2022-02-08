@@ -16,6 +16,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/memberlist v0.3.1
+	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
 	github.com/libp2p/go-mplex v0.4.0
 	github.com/libp2p/go-yamux/v3 v3.0.2
 	github.com/lucas-clemente/quic-go v0.25.0
