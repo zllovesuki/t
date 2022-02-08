@@ -35,3 +35,5 @@ require (
 	golang.org/x/tools v0.1.9 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 )
+
+replace github.com/hashicorp/memberlist v0.3.1 => github.com/miragespace/memberlist v0.2.5-0.20220205123620-41976c53369f
