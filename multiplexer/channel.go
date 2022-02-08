@@ -13,6 +13,7 @@ type Channel struct {
 	incoming chan LinkConnection
 	closer   chan struct{}
 	closed   *int32
+	chClosed *int32
 	started  *int32
 }
 
@@ -22,6 +23,7 @@ func NewChannel() *Channel {
 		incoming: make(chan LinkConnection),
 		closer:   make(chan struct{}),
 		closed:   new(int32),
+		chClosed: new(int32),
 		started:  new(int32),
 	}
 }
@@ -42,6 +44,12 @@ func (c *Channel) Close() bool {
 	return false
 }
 
+func (c *Channel) closeChannel() {
+	if atomic.CompareAndSwapInt32(c.chClosed, 0, 1) {
+		close(c.outgoing)
+	}
+}
+
 func (c *Channel) Closed() <-chan struct{} {
 	return c.closer
 }
@@ -54,14 +62,10 @@ func (c *Channel) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			if c.Close() {
-				close(c.outgoing)
-			}
+			c.closeChannel()
 			return
 		case <-c.closer:
-			if c.Close() {
-				close(c.outgoing)
-			}
+			c.closeChannel()
 			return
 		case x := <-c.incoming:
 			c.outgoing <- x
