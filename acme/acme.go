@@ -300,6 +300,7 @@ func (c *CertManager) RequestCertificate() error {
 	common := c.config.RootZone
 	apex := strings.TrimSuffix(c.config.Domain, c.config.RootZone)
 	apex = strings.TrimSuffix(apex, ".")
+	// TODO: the following routine is not robust
 	switch {
 	case apex == "":
 	case apex[0] == 0x2a: // the "*" character
