@@ -16,7 +16,7 @@ import (
 
 func (s *Server) handleMembershipChange() {
 	go s.leaderTimer()
-	lastLeader := atomic.LoadUint64(s.currentLeader)
+	lastLeader := atomic.LoadUint64(&s.currentLeader)
 	for {
 		select {
 		case <-s.parentCtx.Done():
@@ -29,11 +29,11 @@ func (s *Server) handleMembershipChange() {
 					lowest = peer
 				}
 			}
-			if !atomic.CompareAndSwapUint64(s.currentLeader, lowest, lowest) {
-				atomic.StoreUint64(s.currentLeader, lowest)
+			if !atomic.CompareAndSwapUint64(&s.currentLeader, lowest, lowest) {
+				atomic.StoreUint64(&s.currentLeader, lowest)
 				s.logger.Info("new leader calculated", zap.Uint64("leader", lowest))
 				lastLeader = lowest
-				if s.PeerID() == atomic.LoadUint64(s.currentLeader) {
+				if s.PeerID() == atomic.LoadUint64(&s.currentLeader) {
 					s.startLeader <- struct{}{}
 				} else {
 					s.stopLeader <- struct{}{}
@@ -56,7 +56,7 @@ func (s *Server) leaderTimer() {
 		case <-s.stopLeader:
 			timer = nil
 		case <-timer:
-			if s.PeerID() != atomic.LoadUint64(s.currentLeader) {
+			if s.PeerID() != atomic.LoadUint64(&s.currentLeader) {
 				s.stopLeader <- struct{}{}
 				continue
 			}
@@ -66,7 +66,7 @@ func (s *Server) leaderTimer() {
 					s.checkACMEAccountKeys()
 					s.checkACMECerts()
 				}
-				if s.PeerID() == atomic.LoadUint64(s.currentLeader) {
+				if s.PeerID() == atomic.LoadUint64(&s.currentLeader) {
 					s.startLeader <- struct{}{}
 				}
 			}()

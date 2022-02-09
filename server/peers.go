@@ -134,11 +134,6 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 func (s *Server) handlePeerEvents() {
 	for peer := range s.peers.Notify() {
 		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peer", peer.Peer()), zap.String("protocol", peer.Protocol().String()))
-		// update our peer graph in a different goroutine with closure
-		// as this may block
-		go func(p multiplexer.Peer) {
-			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
-		}(peer)
 		// listen for request for forwarding from peers
 		go func(p multiplexer.Peer) {
 			for c := range p.Handle() {
@@ -193,7 +188,7 @@ func (s *Server) openMessaging(c net.Conn, peer uint64) {
 
 func (s *Server) removePeer(peer uint64) {
 	s.logger.Info("removing disconnected peer", zap.Uint64("peer", peer))
+	s.peerGraph.Remove(peer)
 	s.peers.Remove(peer)
-	s.peerGraph.RemovePeer(peer)
 	s.membershipCh <- struct{}{}
 }

@@ -2,7 +2,9 @@ package state
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"hash/crc64"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,13 +73,15 @@ func (s *PeerMap) NewPeer(ctx context.Context, proto protocol.Protocol, conf mul
 	return nil
 }
 
-func (s *PeerMap) Ring() uint64 {
-	ring := s.self
+func (s *PeerMap) CRC64() uint64 {
 	peers := s.Snapshot()
+	b := make([]byte, 8)
+	crc := crc64.New(crcTable)
 	for _, peer := range peers {
-		ring ^= peer
+		binary.BigEndian.PutUint64(b, peer)
+		crc.Write(b)
 	}
-	return ring
+	return crc.Sum64()
 }
 
 func (s *PeerMap) Notify() <-chan multiplexer.Peer {

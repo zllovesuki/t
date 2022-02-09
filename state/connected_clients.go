@@ -1,44 +1,74 @@
 package state
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"hash/crc64"
+
+	"github.com/FastFilter/xorfilter"
+	"github.com/pkg/errors"
+)
+
+var (
+	crcTable = crc64.MakeTable(crc64.ECMA)
+)
 
 // ConnectedClients is used when memberlist does TCP push/pull
-// state synchronization. It notifies our peers about the list of
-// clients that we are connected to.
+// state synchronization. It is used to notify the querying peer
+// with a binary fuse filter.
 type ConnectedClients struct {
-	Peer    uint64
-	Clients []uint64
+	Peer  uint64
+	CRC64 uint64
+	f     *xorfilter.BinaryFuse8
 }
 
-func (c *ConnectedClients) Pack() []byte {
-	len := uint64(len(c.Clients))
-	// first 8: length of Clients
-	// next 8: Peer ID
-	// the rest: connected clients
-	b := make([]byte, 8+8+8*len)
-	binary.BigEndian.PutUint64(b[0:8], len)
-	binary.BigEndian.PutUint64(b[8:16], c.Peer)
-	for i, c := range c.Clients {
-		binary.BigEndian.PutUint64(b[(2+i)*8:(3+i)*8], c)
+func NewConnectedClients(peer uint64, clients []uint64) *ConnectedClients {
+	b := make([]byte, 8)
+	crc := crc64.New(crcTable)
+	for _, c := range clients {
+		binary.BigEndian.PutUint64(b, c)
+		crc.Write(b)
 	}
-	return b
-}
-
-func (c *ConnectedClients) Unpack(b []byte) {
-	len := binary.BigEndian.Uint64(b[0:8])
-	c.Peer = binary.BigEndian.Uint64(b[8:16])
-	if c.Clients == nil {
-		c.Clients = make([]uint64, len)
-	}
-	for i := uint64(0); i < len; i++ {
-		c.Clients[i] = binary.BigEndian.Uint64(b[(2+i)*8 : (3+i)*8])
+	filter, _ := xorfilter.PopulateBinaryFuse8(clients)
+	return &ConnectedClients{
+		Peer:  peer,
+		CRC64: crc.Sum64(),
+		f:     filter,
 	}
 }
 
-func (c *ConnectedClients) Ring() uint64 {
-	ring := c.Peer
-	for _, p := range c.Clients {
-		ring ^= p
+func (c *ConnectedClients) MarshalBinary() ([]byte, error) {
+	fLen := len(c.f.Fingerprints)
+	b := make([]byte, 48+fLen)
+	binary.BigEndian.PutUint64(b[0:8], c.Peer)
+	binary.BigEndian.PutUint64(b[8:16], c.CRC64)
+	binary.BigEndian.PutUint64(b[16:24], c.f.Seed)
+	binary.BigEndian.PutUint32(b[24:28], c.f.SegmentLength)
+	binary.BigEndian.PutUint32(b[28:32], c.f.SegmentLengthMask)
+	binary.BigEndian.PutUint32(b[32:36], c.f.SegmentCount)
+	binary.BigEndian.PutUint32(b[36:40], c.f.SegmentCountLength)
+	binary.BigEndian.PutUint64(b[40:48], uint64(fLen))
+	copy(b[48:], c.f.Fingerprints)
+	return b, nil
+}
+
+func (c *ConnectedClients) UnmarshalBinary(b []byte) error {
+	if len(b) < 48 {
+		return errors.Errorf("invalid buffer length: %d", len(b))
 	}
-	return ring
+	c.Peer = binary.BigEndian.Uint64(b[0:8])
+	c.CRC64 = binary.BigEndian.Uint64(b[8:16])
+	c.f = &xorfilter.BinaryFuse8{}
+	c.f.Seed = binary.BigEndian.Uint64(b[16:24])
+	c.f.SegmentLength = binary.BigEndian.Uint32(b[24:28])
+	c.f.SegmentLengthMask = binary.BigEndian.Uint32(b[28:32])
+	c.f.SegmentCount = binary.BigEndian.Uint32(b[32:36])
+	c.f.SegmentCountLength = binary.BigEndian.Uint32(b[36:40])
+	fLen := binary.BigEndian.Uint64(b[40:48])
+	c.f.Fingerprints = make([]uint8, fLen)
+	copy(c.f.Fingerprints, b[48:])
+	return nil
+}
+
+func (c *ConnectedClients) Has(client uint64) bool {
+	return c.f.Contains(client)
 }

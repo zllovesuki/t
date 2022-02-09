@@ -3,9 +3,11 @@ module github.com/zllovesuki/t
 go 1.16
 
 require (
+	github.com/FastFilter/xorfilter v0.1.1
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/eggsampler/acme/v3 v3.2.1
+	github.com/etecs-ru/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gookit/config/v2 v2.0.27
@@ -16,7 +18,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/memberlist v0.3.1
-	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
+	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-mplex v0.4.0
 	github.com/libp2p/go-yamux/v3 v3.0.2
 	github.com/lucas-clemente/quic-go v0.25.0

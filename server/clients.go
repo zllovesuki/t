@@ -157,11 +157,6 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 func (s *Server) handleClientEvents() {
 	for peer := range s.clients.Notify() {
 		s.logger.Info("client destination registered", zap.Uint64("peer", peer.Peer()), zap.String("remote", peer.Addr().String()), zap.String("protocol", peer.Protocol().String()))
-		// update our peer graph with the client as this may block with
-		// many clients connecting
-		go func(p multiplexer.Peer) {
-			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
-		}(peer)
 		// remove the client once they are disconnected. relying on notify
 		// as clients do not partipate in gossips
 		go func(p multiplexer.Peer) {
@@ -170,7 +165,6 @@ func (s *Server) handleClientEvents() {
 			case <-p.NotifyClose():
 				s.logger.Debug("removing disconnected client", zap.Uint64("peer", p.Peer()))
 				s.clients.Remove(p.Peer())
-				s.peerGraph.RemovePeer(p.Peer())
 			}
 		}(peer)
 		// do not handle forward request from client

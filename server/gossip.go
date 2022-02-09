@@ -181,11 +181,19 @@ func (s *Server) LocalState(join bool) []byte {
 		}
 		return b
 	}
-	c := state.ConnectedClients{
-		Peer:    s.PeerID(),
-		Clients: s.clients.Snapshot(),
+
+	crc := s.clients.CRC64()
+	ext, found := s.stateCache.Get(crc)
+	if found {
+		s.logger.Debug("stateCache: reusing cached ConnectedClients", zap.Uint64("crc64", crc))
+		return ext.([]byte)
+	} else {
+		c := state.NewConnectedClients(s.PeerID(), s.clients.Snapshot())
+		b, _ := c.MarshalBinary()
+		s.stateCache.Set(c.CRC64, b, int64(len(b)))
+		s.logger.Debug("stateCache: insert new ConnectedClients cache entry", zap.Uint64("crc64", c.CRC64))
+		return b
 	}
-	return c.Pack()
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
@@ -222,9 +230,13 @@ func (s *Server) MergeRemoteState(buf []byte, join bool) {
 		}
 		return
 	}
+
 	var c state.ConnectedClients
-	c.Unpack(buf)
-	s.updatesCh <- &c
+	if err := c.UnmarshalBinary(buf); err != nil {
+		s.logger.Error("gossip: error unmarshaling connected clients buffer", zap.Error(err))
+		return
+	}
+	s.updatesCh <- c
 }
 
 func (s *Server) NotifyMsg(msg []byte) {
@@ -328,13 +340,12 @@ func (s *Server) handleMerge() {
 		// 1. client PeerIDs are unique across sessions
 		// 2. only a maximum of single hop is allowed inter-peers
 		// thus, we can replace our peer's peer graph with the incoming one
-		// if c.Ring() differs from the ring in our peer graph.
-		go func(u *state.ConnectedClients) {
+		// if crc64 differs from the crc64 in our peer graph.
+		go func(u state.ConnectedClients) {
 			logger := s.logger.With(zap.Uint64("peer", u.Peer))
 			logger.Debug("push/pull: processing state transfer")
 			if s.peerGraph.Replace(u) {
 				logger.Info("push/pull: peer graph was updated")
-				logger.Sugar().Debugf("peerGraph at time %s:\n%+v", time.Now().Format(time.RFC3339), s.peerGraph)
 			}
 		}(x)
 	}
