@@ -2,15 +2,15 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 func checkClientSNI(domain string) func(tls.ConnectionState) error {
 	return func(cs tls.ConnectionState) error {
 		if !strings.HasSuffix(cs.ServerName, domain) {
-			return errors.Errorf("unauthorized domain name: %s", cs.ServerName)
+			return fmt.Errorf("unauthorized domain name: %s", cs.ServerName)
 		}
 		return nil
 	}
@@ -26,7 +26,7 @@ func checkPeerSAN(required string) func(tls.ConnectionState) error {
 			found = found || name == required
 		}
 		if !found {
-			return errors.Errorf("%s must be present in SANs", required)
+			return fmt.Errorf("%s must be present in SANs", required)
 		}
 		return nil
 	}

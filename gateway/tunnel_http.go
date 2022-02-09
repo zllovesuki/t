@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/shared"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

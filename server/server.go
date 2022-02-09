@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -19,7 +20,6 @@ import (
 	"github.com/etecs-ru/ristretto"
 	"github.com/hashicorp/memberlist"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -117,7 +117,7 @@ func New(conf Config) (*Server, error) {
 	for _, d := range conf.Gossip.Keyring {
 		b, err := base64.StdEncoding.DecodeString(d)
 		if err != nil {
-			return nil, errors.Wrap(err, "decoding base64 keyring")
+			return nil, fmt.Errorf("decoding base64 keyring: %w", err)
 		}
 		keys = append(keys, b)
 	}
@@ -127,7 +127,7 @@ func New(conf Config) (*Server, error) {
 
 	keyring, err := memberlist.NewKeyring(keys, keys[rand.Intn(len(keys))])
 	if err != nil {
-		return nil, errors.Wrap(err, "creating gossip keyring")
+		return nil, fmt.Errorf("creating gossip keyring: %w", err)
 	}
 
 	c := memberlist.DefaultWANConfig()
@@ -152,7 +152,7 @@ func New(conf Config) (*Server, error) {
 	// from gossip should help with allocation
 	b, err := s.meta.MarshalBinary()
 	if err != nil {
-		return nil, errors.Wrap(err, "marshal meta")
+		return nil, fmt.Errorf("marshal meta: %w", err)
 	}
 	s.metaBytes.Store(b)
 
@@ -236,7 +236,7 @@ func (s *Server) findPath(link multiplexer.Link) multiplexer.Peer {
 func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Link) (<-chan error, error) {
 	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+		return nil, fmt.Errorf("peer %d not found in peer graph: %w", link.Destination, multiplexer.ErrDestinationNotFound)
 	}
 	s.logger.Debug("opening new forwarding link", zap.Object("link", link))
 	profiler.ConnectionStats.WithLabelValues("new", "bidirectional").Inc()
@@ -246,7 +246,7 @@ func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Li
 func (s *Server) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+		return nil, fmt.Errorf("peer %d not found in peer graph: %w", link.Destination, multiplexer.ErrDestinationNotFound)
 	}
 	s.logger.Debug("opening new direct connection link", zap.Object("link", link))
 	profiler.ConnectionStats.WithLabelValues("new", "direct").Inc()

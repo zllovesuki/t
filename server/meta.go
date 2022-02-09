@@ -3,11 +3,11 @@ package server
 import (
 	"encoding"
 	"encoding/binary"
+	"fmt"
 	"net"
 
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -52,7 +52,7 @@ func (m *Meta) MarshalBinary() ([]byte, error) {
 
 func (m *Meta) UnmarshalBinary(b []byte) error {
 	if len(b) != MetaSize {
-		return errors.Errorf("invalid buffer length: %d", len(b))
+		return fmt.Errorf("invalid buffer length: %d", len(b))
 	}
 	ip := net.IP(b[0:net.IPv4len])
 	m.ConnectIP = ip.To4().String()

@@ -3,9 +3,9 @@ package messaging
 import (
 	"encoding"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
-
-	"github.com/pkg/errors"
 )
 
 type Message struct {
@@ -43,10 +43,10 @@ func (m *Message) ReadFrom(f io.Reader) (int64, error) {
 	l, err := f.Read(head)
 	x += int64(l)
 	if err != nil {
-		return x, errors.Wrap(err, "reading message header")
+		return x, fmt.Errorf("reading message header: %w", err)
 	}
 	if l != messageHeaderLength {
-		return x, errors.Errorf("invalid buffer length: %d", l)
+		return x, fmt.Errorf("invalid buffer length: %d", l)
 	}
 
 	m.Type = MessageType(binary.BigEndian.Uint64(head[8:16]))
@@ -59,7 +59,7 @@ func (m *Message) ReadFrom(f io.Reader) (int64, error) {
 	x += int64(l)
 
 	if err != nil {
-		return x, errors.Wrap(err, "reading message data")
+		return x, fmt.Errorf("reading message data: %w", err)
 	}
 	if l != dl {
 		return x, errors.New("incomplete data buffer read")

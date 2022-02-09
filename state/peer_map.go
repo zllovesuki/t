@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"sync"
@@ -13,7 +14,6 @@ import (
 	"github.com/zllovesuki/t/multiplexer/protocol"
 	_ "github.com/zllovesuki/t/mux"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/zllovesuki/t/shared"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -65,13 +65,13 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 
 	_, err = conn.Read(r)
 	if err != nil {
-		err = errors.Wrap(err, "reading handshake")
+		err = fmt.Errorf("reading handshake: %w", err)
 		return
 	}
 
 	err = link.UnmarshalBinary(r)
 	if err != nil {
-		err = errors.Wrap(err, "unmarshal link")
+		err = fmt.Errorf("unmarshal link: %w", err)
 		return
 	}
 
@@ -88,13 +88,13 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		}
 	}
 	if !validProtocol {
-		err = errors.Errorf("unacceptable protocol: %d", link.Protocol)
+		err = fmt.Errorf("unacceptable protocol: %d", link.Protocol)
 		return
 	}
 
 	_, err = multiplexer.New(link.Protocol)
 	if err != nil {
-		err = errors.Wrap(err, "negotiating protocol with client")
+		err = fmt.Errorf("negotiating protocol with client: %w", err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 	logger.Debug("incoming handshake with client")
 
 	if link.Source != 0 || link.Destination != 0 {
-		err = errors.Errorf("invalid client handshake %+v", link)
+		err = fmt.Errorf("invalid client handshake %+v", link)
 		return
 	}
 
@@ -114,18 +114,18 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 	var w []byte
 	w, err = link.MarshalBinary()
 	if err != nil {
-		err = errors.Wrap(err, "marshal link as binary")
+		err = fmt.Errorf("marshal link as binary: %w", err)
 		return
 	}
 
 	var length int
 	length, err = conn.Write(w)
 	if err != nil {
-		err = errors.Wrap(err, "replying handshake")
+		err = fmt.Errorf("replying handshake: %w", err)
 		return
 	}
 	if length != multiplexer.LinkSize {
-		err = errors.Errorf("invalid handshake length sent to client: %d", length)
+		err = fmt.Errorf("invalid handshake length sent to client: %d", length)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		Hostname: fmt.Sprintf("https://%s.%s", name, s.config.Domain),
 	})
 	if err != nil {
-		err = errors.Wrap(err, "writing generated hostname to client")
+		err = fmt.Errorf("writing generated hostname to client: %w", err)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (s *Server) clientNegotiation(logger *zap.Logger, connector interface{}, co
 		Wait:      time.Second,
 	})
 	if err != nil {
-		err = errors.Wrap(err, "setting up client")
+		err = fmt.Errorf("setting up client: %w", err)
 	}
 
 	return

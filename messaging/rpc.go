@@ -2,11 +2,11 @@ package messaging
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math/rand"
 	"runtime"
 	"time"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +67,7 @@ func (c *Channel) Call(peer uint64, b []byte) (rep []byte, err error) {
 	}
 	err = c.write(peer, m)
 	if err != nil {
-		err = errors.Wrap(err, "sending request to peer")
+		err = fmt.Errorf("sending request to peer: %w", err)
 		return
 	}
 	select {

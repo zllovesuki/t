@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/messaging"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

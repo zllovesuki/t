@@ -2,10 +2,10 @@ package state
 
 import (
 	"encoding/binary"
+	"fmt"
 	"hash/crc64"
 
 	"github.com/FastFilter/xorfilter"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -53,7 +53,7 @@ func (c *ConnectedClients) MarshalBinary() ([]byte, error) {
 
 func (c *ConnectedClients) UnmarshalBinary(b []byte) error {
 	if len(b) < 48 {
-		return errors.Errorf("invalid buffer length: %d", len(b))
+		return fmt.Errorf("invalid buffer length: %d", len(b))
 	}
 	c.Peer = binary.BigEndian.Uint64(b[0:8])
 	c.CRC64 = binary.BigEndian.Uint64(b[8:16])

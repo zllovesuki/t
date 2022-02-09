@@ -2,6 +2,7 @@ package multiplexer
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -13,7 +14,6 @@ import (
 
 	pool "github.com/libp2p/go-buffer-pool"
 	"github.com/libp2p/go-yamux/v3"
-	"github.com/pkg/errors"
 )
 
 const (

@@ -14,10 +14,12 @@ import (
 
 type ForwardOpts struct {
 	Logger *zap.Logger
+	Sigs   chan os.Signal
 	URL    string
 	Addr   string
 	Debug  bool
-	Sigs   chan os.Signal
+	_      [7]byte
+	_      [8]byte
 }
 
 func Forward(ctx context.Context, opts ForwardOpts) {

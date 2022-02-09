@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer/protocol"
 	"github.com/zllovesuki/t/provider"
@@ -8,7 +10,6 @@ import (
 
 	"github.com/gookit/config/v2"
 	"github.com/gookit/config/v2/yaml"
-	"github.com/pkg/errors"
 )
 
 type WebConfig struct {
@@ -39,7 +40,7 @@ func getConfig(path string) (*ConfigBundle, error) {
 
 	err := cfg.LoadFiles(path)
 	if err != nil {
-		return nil, errors.Wrap(err, "loading config file")
+		return nil, fmt.Errorf("loading config file: %w", err)
 	}
 
 	var bundle ConfigBundle

@@ -10,6 +10,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -17,7 +19,6 @@ import (
 	"time"
 
 	"github.com/eggsampler/acme/v3"
-	"github.com/pkg/errors"
 )
 
 type CertManager struct {
@@ -64,7 +65,7 @@ func New(conf Config) (*CertManager, error) {
 	}
 	client, err := acme.NewClient(conf.Directory, acme.WithHTTPTimeout(time.Second*10))
 	if err != nil {
-		return nil, errors.Wrap(err, "initializing acme client")
+		return nil, fmt.Errorf("initializing acme client: %w", err)
 	}
 	c := &CertManager{
 		client: client,
@@ -84,17 +85,17 @@ func (c *CertManager) CreateAccount() error {
 	var err error
 	c.accKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return errors.Wrap(err, "generating new account private key")
+		return fmt.Errorf("generating new account private key: %w", err)
 	}
 	c.account, err = c.client.NewAccountOptions(c.accKey, acme.NewAcctOptAgreeTOS(), acme.NewAcctOptWithContacts(c.config.Contact))
 	if err != nil {
-		return errors.Wrap(err, "creating account with CA")
+		return fmt.Errorf("creating account with CA: %w", err)
 	}
 	c.hasAcc = true
 
 	pem, err := keyToPEM(c.accKey)
 	if err != nil {
-		return errors.Wrap(err, "converting pkey to pem")
+		return fmt.Errorf("converting pkey to pem: %w", err)
 	}
 	af := AccountFile{
 		PrivateKey: string(pem),
@@ -106,12 +107,12 @@ func (c *CertManager) CreateAccount() error {
 func (c *CertManager) persistAccount(af AccountFile) error {
 	w, err := os.Create(path.Join(c.config.DataDir, "accounts.json"))
 	if err != nil {
-		return errors.Wrap(err, "opening accounts.json for writing")
+		return fmt.Errorf("opening accounts.json for writing: %w", err)
 	}
 	defer w.Close()
 	err = json.NewEncoder(w).Encode(&af)
 	if err != nil {
-		return errors.Wrap(err, "writing to accounts.json")
+		return fmt.Errorf("writing to accounts.json: %w", err)
 	}
 	return nil
 }
@@ -119,12 +120,12 @@ func (c *CertManager) persistAccount(af AccountFile) error {
 func (c *CertManager) persisCerts(bundle Bundle) error {
 	w, err := os.Create(path.Join(c.config.DataDir, "bundle.json"))
 	if err != nil {
-		return errors.Wrap(err, "opening bundle.json for writing")
+		return fmt.Errorf("opening bundle.json for writing: %w", err)
 	}
 	defer w.Close()
 	err = json.NewEncoder(w).Encode(&bundle)
 	if err != nil {
-		return errors.Wrap(err, "writing to bundle.json")
+		return fmt.Errorf("writing to bundle.json: %w", err)
 	}
 	return nil
 }
@@ -138,7 +139,7 @@ func (c *CertManager) ExportAccount() (*AccountFile, error) {
 	}
 	pem, err := keyToPEM(c.accKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "converting pkey to pem")
+		return nil, fmt.Errorf("converting pkey to pem: %w", err)
 	}
 	af := AccountFile{
 		PrivateKey: string(pem),
@@ -153,14 +154,14 @@ func (c *CertManager) LoadAccountFromFile() error {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrNoAccount
 		}
-		return errors.Wrap(err, "loading accounts.json")
+		return fmt.Errorf("loading accounts.json: %w", err)
 	}
 	defer f.Close()
 
 	var af AccountFile
 	err = json.NewDecoder(f).Decode(&af)
 	if err != nil {
-		return errors.Wrap(err, "decoding accounts.json")
+		return fmt.Errorf("decoding accounts.json: %w", err)
 	}
 
 	return c.ImportAccount(af, false)
@@ -172,14 +173,14 @@ func (c *CertManager) LoadBundleFromFile() error {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrNoCert
 		}
-		return errors.Wrap(err, "loading bundle.json")
+		return fmt.Errorf("loading bundle.json: %w", err)
 	}
 	defer f.Close()
 
 	var bundle Bundle
 	err = json.NewDecoder(f).Decode(&bundle)
 	if err != nil {
-		return errors.Wrap(err, "decoding bundle.json")
+		return fmt.Errorf("decoding bundle.json: %w", err)
 	}
 
 	return c.ImportBundle(bundle, false)
@@ -195,7 +196,7 @@ func (c *CertManager) ImportAccount(af AccountFile, persist bool) error {
 
 	pKey, err := pemToKey([]byte(af.PrivateKey))
 	if err != nil {
-		return errors.Wrap(err, "converting pem to pkey")
+		return fmt.Errorf("converting pem to pkey: %w", err)
 	}
 	c.account, err = c.client.UpdateAccount(acme.Account{
 		PrivateKey: pKey,
@@ -203,7 +204,7 @@ func (c *CertManager) ImportAccount(af AccountFile, persist bool) error {
 	}, c.config.Contact)
 
 	if err != nil {
-		return errors.Wrap(err, "reloading accounts")
+		return fmt.Errorf("reloading accounts: %w", err)
 	}
 
 	c.hasAcc = true
@@ -226,7 +227,7 @@ func (c *CertManager) ImportPrivateKey(keyPem string) error {
 	var err error
 	c.certPKey, err = pemToKey([]byte(keyPem))
 	if err != nil {
-		return errors.Wrap(err, "decoding private key from pem")
+		return fmt.Errorf("decoding private key from pem: %w", err)
 	}
 	return nil
 }
@@ -241,7 +242,7 @@ func (c *CertManager) ExportPrivateKey() ([]byte, error) {
 
 	pKey, err := keyToPEM(c.certPKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "encoding private key to pem")
+		return nil, fmt.Errorf("encoding private key to pem: %w", err)
 	}
 	return pKey, nil
 }
@@ -249,14 +250,14 @@ func (c *CertManager) ExportPrivateKey() ([]byte, error) {
 func (c *CertManager) ImportBundle(bundle Bundle, persist bool) error {
 	pKey, err := pemToKey([]byte(bundle.PrivateKey))
 	if err != nil {
-		return errors.Wrap(err, "decoding private key")
+		return fmt.Errorf("decoding private key: %w", err)
 	}
 	cert, err := tls.X509KeyPair(
 		[]byte(strings.Join(bundle.Chain, "\n")),
 		[]byte(bundle.PrivateKey),
 	)
 	if err != nil {
-		return errors.Wrap(err, "generating x509 key pair")
+		return fmt.Errorf("generating x509 key pair: %w", err)
 	}
 	c.certPKeyMu.Lock()
 	c.certMu.Lock()
@@ -324,7 +325,7 @@ func (c *CertManager) RequestCertificate() error {
 		c.certPKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			c.certPKeyMu.Unlock()
-			return errors.Wrap(err, "generating certificate private key")
+			return fmt.Errorf("generating certificate private key: %w", err)
 		}
 		c.hasCertPKey = true
 	}
@@ -340,29 +341,29 @@ func (c *CertManager) RequestCertificate() error {
 	c.certPKeyMu.Unlock()
 
 	if err != nil {
-		return errors.Wrap(err, "generating csr")
+		return fmt.Errorf("generating csr: %w", err)
 	}
 	csr, err := x509.ParseCertificateRequest(csrDer)
 	if err != nil {
-		return errors.Wrap(err, "parsing csr")
+		return fmt.Errorf("parsing csr: %w", err)
 	}
 
 	var pKey []byte
 	pKey, err = c.ExportPrivateKey()
 	if err != nil {
-		return errors.Wrap(err, "encoding private key to pem")
+		return fmt.Errorf("encoding private key to pem: %w", err)
 	}
 
 	// now we can create a order
 	o, err := c.client.NewOrderDomains(c.account, names...)
 	if err != nil {
-		return errors.Wrap(err, "creating order")
+		return fmt.Errorf("creating order: %w", err)
 	}
 
 	for _, authURL := range o.Authorizations {
 		auth, err := c.client.FetchAuthorization(c.account, authURL)
 		if err != nil {
-			return errors.Wrap(err, "fetching authorization")
+			return fmt.Errorf("fetching authoriztion: %w", err)
 		}
 		chal, ok := auth.ChallengeMap[acme.ChallengeTypeDNS01]
 		if !ok {
@@ -377,7 +378,7 @@ func (c *CertManager) RequestCertificate() error {
 
 			ok, err = c.config.DNSProvider.Update(ctx, host, "TXT", txt)
 			if err != nil {
-				return errors.Wrap(err, "updating dns record")
+				return fmt.Errorf("updating dns record: %w", err)
 			}
 			if !ok {
 				return errors.New("dns update failed")
@@ -385,7 +386,7 @@ func (c *CertManager) RequestCertificate() error {
 
 			chal, err = c.client.UpdateChallenge(c.account, chal)
 			if err != nil {
-				return errors.Wrap(err, "updating challenge")
+				return fmt.Errorf("updating challenge: %w", err)
 			}
 			return nil
 		}()
@@ -399,12 +400,12 @@ func (c *CertManager) RequestCertificate() error {
 
 	o, err = c.client.FinalizeOrder(c.account, o, csr)
 	if err != nil {
-		return errors.Wrap(err, "finalizing order")
+		return fmt.Errorf("finalizing order: %w", err)
 	}
 
 	certs, err := c.client.FetchCertificates(c.account, o.Certificate)
 	if err != nil {
-		return errors.Wrap(err, "fetching certificates")
+		return fmt.Errorf("fetching certificates: %w", err)
 	}
 
 	var pemData []string
@@ -421,7 +422,7 @@ func (c *CertManager) RequestCertificate() error {
 	}
 
 	if err := c.ImportBundle(bundle, true); err != nil {
-		return errors.Wrap(err, "re-importing exported certificate")
+		return fmt.Errorf("re-importing exported certificate: %w", err)
 	}
 
 	return nil
@@ -439,7 +440,7 @@ func (c *CertManager) GetCertificatesFunc(chi *tls.ClientHelloInfo) (*tls.Certif
 func keyToPEM(pKey *ecdsa.PrivateKey) ([]byte, error) {
 	enc, err := x509.MarshalECPrivateKey(pKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "marshaling private key to pem")
+		return nil, fmt.Errorf("marshalling private key to pem: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{
 		Type:  "EC PRIVATE KEY",
@@ -451,7 +452,7 @@ func pemToKey(b []byte) (*ecdsa.PrivateKey, error) {
 	blk, _ := pem.Decode(b)
 	pKey, err := x509.ParseECPrivateKey(blk.Bytes)
 	if err != nil {
-		return nil, errors.Wrap(err, "parsing private key from pem")
+		return nil, fmt.Errorf("parsing private key from pem: %w", err)
 	}
 	return pKey, nil
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/zllovesuki/t/state"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -300,25 +300,25 @@ func (s *Server) connectPeer(m Meta) {
 
 	buf, err = link.MarshalBinary()
 	if err != nil {
-		err = errors.Wrap(err, "marshal link")
+		err = fmt.Errorf("marshal link: %w", err)
 		return
 	}
 
 	dialer, err := multiplexer.Dialer(m.Protocol)
 	if err != nil {
-		err = errors.Wrap(err, "getting dialer")
+		err = fmt.Errorf("getting dialer: %w", err)
 		return
 	}
 
 	connector, conn, closer, err = dialer(fmt.Sprintf("%s:%d", m.ConnectIP, m.ConnectPort), s.config.PeerTLSConfig)
 	if err != nil {
-		err = errors.Wrap(err, "dialing peer")
+		err = fmt.Errorf("dialing peer: %w", err)
 		return
 	}
 
 	_, err = conn.Write(buf)
 	if err != nil {
-		err = errors.Wrap(err, "writing handshake")
+		err = fmt.Errorf("writing handshake: %w", err)
 		return
 	}
 
