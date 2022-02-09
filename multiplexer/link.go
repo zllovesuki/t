@@ -3,8 +3,8 @@ package multiplexer
 import (
 	"encoding"
 	"encoding/binary"
+	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/zllovesuki/t/multiplexer/alpn"
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
@@ -52,7 +52,7 @@ func (s *Link) MarshalBinary() ([]byte, error) {
 
 func (s *Link) UnmarshalBinary(b []byte) error {
 	if len(b) != LinkSize {
-		return errors.Errorf("invalid buffer length: %d", len(b))
+		return fmt.Errorf("invalid buffer length: %d", len(b))
 	}
 	s.Source = binary.BigEndian.Uint64(b[0:8])
 	s.Destination = binary.BigEndian.Uint64(b[8:16])

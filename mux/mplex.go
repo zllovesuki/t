@@ -3,6 +3,8 @@ package mux
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 
@@ -10,7 +12,6 @@ import (
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	multiplex "github.com/libp2p/go-mplex"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -140,20 +141,10 @@ func (p *Mplex) Peer() uint64 {
 func (p *Mplex) Messaging(ctx context.Context) (net.Conn, error) {
 	n, err := p.session.NewStream(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new messaging stream")
+		return nil, fmt.Errorf("opening new messaging stream: %w", err)
 	}
-	link := multiplexer.MessagingLink
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
-	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing messaging stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid messaging handshake length: %d", written)
+	if err := messagingHandshake(n); err != nil {
+		return nil, err
 	}
 	return &mplexConn{
 		Stream:     n,
@@ -164,22 +155,11 @@ func (p *Mplex) Messaging(ctx context.Context) (net.Conn, error) {
 func (p *Mplex) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	n, err := p.session.NewStream(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new stream")
+		return nil, fmt.Errorf("opening new stream: %w", err)
 	}
-
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
+	if err := directHandshake(link, n); err != nil {
+		return nil, err
 	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
-	}
-
 	return &mplexConn{
 		Stream:     n,
 		parentConn: p.config.Conn.(net.Conn),

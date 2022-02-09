@@ -15,7 +15,6 @@ import (
 	"github.com/zllovesuki/t/server"
 	"github.com/zllovesuki/t/shared"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -37,11 +36,11 @@ type Gateway struct {
 func New(conf GatewayConfig) (*Gateway, error) {
 	md, err := template.New("content").Parse(tmpl)
 	if err != nil {
-		return nil, errors.Wrap(err, "reading markdown for apex template")
+		return nil, fmt.Errorf("reading markdown for apex template: %w", err)
 	}
 	idx, err := template.New("index").Parse(index)
 	if err != nil {
-		return nil, errors.Wrap(err, "reading index for apex template")
+		return nil, fmt.Errorf("reading index for apex template: %w", err)
 	}
 	d := conf.RootDomain
 	if conf.GatewayPort != 443 {

@@ -1,9 +1,9 @@
 package multiplexer
 
 import (
+	"errors"
 	"time"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -12,7 +14,6 @@ import (
 	"github.com/zllovesuki/t/state"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -69,13 +70,13 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
 	_, err = conn.Read(r)
 	if err != nil {
-		err = errors.Wrap(err, "reading handshake")
+		err = fmt.Errorf("reading handshake: %w", err)
 		return
 	}
 
 	err = link.UnmarshalBinary(r)
 	if err != nil {
-		err = errors.Wrap(err, "unmarshal link")
+		err = fmt.Errorf("unmarshal link: %w", err)
 		return
 	}
 
@@ -92,13 +93,13 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 		}
 	}
 	if !validProtocol {
-		err = errors.Errorf("unacceptable protocol: %d", link.Protocol)
+		err = fmt.Errorf("unacceptable protocol: %d", link.Protocol)
 		return
 	}
 
 	_, err = multiplexer.New(link.Protocol)
 	if err != nil {
-		err = errors.Wrap(err, "negotiating protocol with peer")
+		err = fmt.Errorf("negotiating protocol with peer: %w", err)
 		return
 	}
 
@@ -110,7 +111,7 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 		(link.Source == link.Destination) ||
 		(link.Destination != s.PeerID()) ||
 		link.Source == s.PeerID() {
-		err = errors.Errorf("invalid peer handshake %+v", link)
+		err = fmt.Errorf("invalid peer handshake %+v", link)
 		return
 	}
 
@@ -125,7 +126,7 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 		Wait:      time.Second,
 	})
 	if err != nil {
-		err = errors.Wrap(err, "setting up peer")
+		err = fmt.Errorf("setting up peer: %w", err)
 	}
 
 	return
@@ -134,11 +135,6 @@ func (s *Server) peerNegotiation(logger *zap.Logger, connector interface{}, conn
 func (s *Server) handlePeerEvents() {
 	for peer := range s.peers.Notify() {
 		s.logger.Info("peer registered", zap.Bool("initiator", peer.Initiator()), zap.Uint64("peer", peer.Peer()), zap.String("protocol", peer.Protocol().String()))
-		// update our peer graph in a different goroutine with closure
-		// as this may block
-		go func(p multiplexer.Peer) {
-			s.peerGraph.AddEdges(p.Peer(), s.PeerID())
-		}(peer)
 		// listen for request for forwarding from peers
 		go func(p multiplexer.Peer) {
 			for c := range p.Handle() {
@@ -193,7 +189,7 @@ func (s *Server) openMessaging(c net.Conn, peer uint64) {
 
 func (s *Server) removePeer(peer uint64) {
 	s.logger.Info("removing disconnected peer", zap.Uint64("peer", peer))
+	s.peerGraph.Remove(peer)
 	s.peers.Remove(peer)
-	s.peerGraph.RemovePeer(peer)
 	s.membershipCh <- struct{}{}
 }

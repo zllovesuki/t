@@ -1,11 +1,11 @@
 package messaging
 
 import (
+	"errors"
 	"io"
 	"net"
 	"sync"
 
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

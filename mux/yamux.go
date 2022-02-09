@@ -3,6 +3,8 @@ package mux
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -12,7 +14,6 @@ import (
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/libp2p/go-yamux/v3"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -53,7 +54,7 @@ func dialYamux(addr string, t *tls.Config) (connector interface{}, hs net.Conn, 
 		Timeout: time.Second * 3,
 	}, "tcp", addr, t.Clone())
 	if sErr != nil {
-		err = errors.Wrap(sErr, "opening tls connection")
+		err = fmt.Errorf("opening tls connection: %w", sErr)
 		return
 	}
 	closer = func() {
@@ -84,7 +85,7 @@ func NewYamuxPeer(config multiplexer.Config) (multiplexer.Peer, error) {
 		session, err = yamux.Server(config.Conn.(net.Conn), cfg, nil)
 	}
 	if err != nil {
-		return nil, errors.Wrap(err, "starting a peer connection")
+		return nil, fmt.Errorf("starting a peer connection: %w", err)
 	}
 
 	return &Yamux{
@@ -172,20 +173,10 @@ func (p *Yamux) Peer() uint64 {
 func (p *Yamux) Messaging(ctx context.Context) (net.Conn, error) {
 	n, err := p.session.Open(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new messaging stream")
+		return nil, fmt.Errorf("opening new messaging stream: %w", err)
 	}
-	link := multiplexer.MessagingLink
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
-	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing messaging stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid messaging handshake length: %d", written)
+	if err := messagingHandshake(n); err != nil {
+		return nil, err
 	}
 	return n, nil
 }
@@ -193,22 +184,11 @@ func (p *Yamux) Messaging(ctx context.Context) (net.Conn, error) {
 func (p *Yamux) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	n, err := p.session.Open(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new stream")
+		return nil, fmt.Errorf("opening new stream: %w", err)
 	}
-
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
+	if err := directHandshake(link, n); err != nil {
+		return nil, err
 	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
-	}
-
 	return n, nil
 }
 

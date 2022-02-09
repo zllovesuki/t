@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -16,14 +17,17 @@ import (
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/state"
 
+	"github.com/etecs-ru/ristretto"
 	"github.com/hashicorp/memberlist"
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type Server struct {
 	id                 uint64
+	_                  [56]byte // alignment padding
+	currentLeader      uint64
+	_                  [56]byte // alignment padding
 	parentCtx          context.Context
 	logger             *zap.Logger
 	config             Config
@@ -40,8 +44,8 @@ type Server struct {
 	gossip             *memberlist.Memberlist
 	gossipCfg          *memberlist.Config
 	broadcasts         *memberlist.TransmitLimitedQueue
-	updatesCh          chan *state.ConnectedClients
-	currentLeader      *uint64
+	updatesCh          chan state.ConnectedClients
+	stateCache         *ristretto.Cache
 	membershipCh       chan struct{}
 	startLeader        chan struct{}
 	stopLeader         chan struct{}
@@ -61,6 +65,18 @@ func New(conf Config) (*Server, error) {
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
 	pg := state.NewPeerGraph(self)
+
+	sCache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 1e3,
+		MaxCost:     1 << 23, // 8MB
+		BufferItems: 64,
+		KeyToHash: func(key interface{}) (uint64, uint64) {
+			return key.(uint64), 0
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		meta: Meta{
@@ -82,8 +98,8 @@ func New(conf Config) (*Server, error) {
 		clientTLSListener:  conf.ClientTLSListener,
 		clientQuicListener: conf.ClientQUICListener,
 		logger:             conf.Logger,
-		updatesCh:          make(chan *state.ConnectedClients, 16),
-		currentLeader:      new(uint64),
+		stateCache:         sCache,
+		updatesCh:          make(chan state.ConnectedClients, 16),
 		membershipCh:       make(chan struct{}, 1),
 		startLeader:        make(chan struct{}, 1),
 		stopLeader:         make(chan struct{}, 1),
@@ -101,7 +117,7 @@ func New(conf Config) (*Server, error) {
 	for _, d := range conf.Gossip.Keyring {
 		b, err := base64.StdEncoding.DecodeString(d)
 		if err != nil {
-			return nil, errors.Wrap(err, "decoding base64 keyring")
+			return nil, fmt.Errorf("decoding base64 keyring: %w", err)
 		}
 		keys = append(keys, b)
 	}
@@ -111,7 +127,7 @@ func New(conf Config) (*Server, error) {
 
 	keyring, err := memberlist.NewKeyring(keys, keys[rand.Intn(len(keys))])
 	if err != nil {
-		return nil, errors.Wrap(err, "creating gossip keyring")
+		return nil, fmt.Errorf("creating gossip keyring: %w", err)
 	}
 
 	c := memberlist.DefaultWANConfig()
@@ -136,7 +152,7 @@ func New(conf Config) (*Server, error) {
 	// from gossip should help with allocation
 	b, err := s.meta.MarshalBinary()
 	if err != nil {
-		return nil, errors.Wrap(err, "marshal meta")
+		return nil, fmt.Errorf("marshal meta: %w", err)
 	}
 	s.metaBytes.Store(b)
 
@@ -208,27 +224,19 @@ func (s *Server) PeerID() uint64 {
 }
 
 func (s *Server) findPath(link multiplexer.Link) multiplexer.Peer {
-	// does the destination exist in our peer graph?
-	if !s.peerGraph.HasPeer(link.Destination) {
-		return nil
-	}
 	// is the client connected locally?
 	if p := s.clients.Get(link.Destination); p != nil {
 		return p
 	}
-	// TODO(zllovesuki): this allows for future rtt lookup for multi-peer client
-	// get a random peer from the graph, if any
-	peers := s.peerGraph.GetEdges(link.Destination)
-	if len(peers) == 0 {
-		return nil
-	}
-	return s.peers.Get(peers[rand.Intn(len(peers))])
+	// does the destination exist in our peer graph?
+	p := s.peerGraph.Who(link.Destination)
+	return s.peers.Get(p) // nil if no one has it
 }
 
 func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Link) (<-chan error, error) {
 	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+		return nil, fmt.Errorf("peer %d not found in peer graph: %w", link.Destination, multiplexer.ErrDestinationNotFound)
 	}
 	s.logger.Debug("opening new forwarding link", zap.Object("link", link))
 	profiler.ConnectionStats.WithLabelValues("new", "bidirectional").Inc()
@@ -238,7 +246,7 @@ func (s *Server) Forward(ctx context.Context, conn net.Conn, link multiplexer.Li
 func (s *Server) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	p := s.findPath(link)
 	if p == nil {
-		return nil, errors.Wrapf(multiplexer.ErrDestinationNotFound, "peer %d not found in peer graph", link.Destination)
+		return nil, fmt.Errorf("peer %d not found in peer graph: %w", link.Destination, multiplexer.ErrDestinationNotFound)
 	}
 	s.logger.Debug("opening new direct connection link", zap.Object("link", link))
 	profiler.ConnectionStats.WithLabelValues("new", "direct").Inc()

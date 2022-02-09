@@ -3,6 +3,8 @@ package mux
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync/atomic"
@@ -12,7 +14,6 @@ import (
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -46,7 +47,7 @@ func dialQuic(addr string, t *tls.Config) (connector interface{}, hs net.Conn, c
 	var sess quic.Session
 	sess, err = quic.DialAddr(addr, t.Clone(), QUICConfig())
 	if err != nil {
-		err = errors.Wrap(err, "opening quic session")
+		err = fmt.Errorf("opening quic session: %w", err)
 		return
 	}
 	closer = func() {
@@ -54,7 +55,7 @@ func dialQuic(addr string, t *tls.Config) (connector interface{}, hs net.Conn, c
 	}
 	conn, sErr := sess.OpenStream()
 	if sErr != nil {
-		err = errors.Wrap(sErr, "opening quic handshake connection")
+		err = fmt.Errorf("opening quic handshake stream: %w", sErr)
 		return
 	}
 	connector = sess
@@ -169,20 +170,10 @@ func (p *QUIC) Peer() uint64 {
 func (p *QUIC) Messaging(ctx context.Context) (net.Conn, error) {
 	n, err := p.session.OpenStream()
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new messaging stream")
+		return nil, fmt.Errorf("opening new messaging stream: %w", err)
 	}
-	link := multiplexer.MessagingLink
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
-	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing messaging stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid messaging handshake length: %d", written)
+	if err := messagingHandshake(n); err != nil {
+		return nil, err
 	}
 	return &quicConn{
 		Stream:  n,
@@ -193,22 +184,11 @@ func (p *QUIC) Messaging(ctx context.Context) (net.Conn, error) {
 func (p *QUIC) Direct(ctx context.Context, link multiplexer.Link) (net.Conn, error) {
 	n, err := p.session.OpenStream()
 	if err != nil {
-		return nil, errors.Wrap(err, "opening new stream")
+		return nil, fmt.Errorf("opening new stream: %w", err)
 	}
-
-	buf, err := link.MarshalBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal link as binary")
+	if err := directHandshake(link, n); err != nil {
+		return nil, err
 	}
-
-	written, err := n.Write(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "writing stream handshake")
-	}
-	if written != multiplexer.LinkSize {
-		return nil, errors.Errorf("invalid bidirectional handshake length: %d", written)
-	}
-
 	return &quicConn{
 		Stream:  n,
 		Session: p.session,

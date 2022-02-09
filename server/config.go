@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 
 	"github.com/zllovesuki/t/acme"
 	"github.com/zllovesuki/t/multiplexer/protocol"
 
 	"github.com/lucas-clemente/quic-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 

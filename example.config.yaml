@@ -32,7 +32,7 @@ acme:
       zone: example.com
       tsigKey: sign.
       tsigSecret: yoursecrethere==
-      tsigAlgo: hmac-sha256
+      tsigAlgo: hmac-sha256.
       nameserver: dns.example.com:53
 
 network:
