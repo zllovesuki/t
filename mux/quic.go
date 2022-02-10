@@ -27,7 +27,7 @@ func quicConfigCommon() *quic.Config {
 		KeepAlive:               true,
 		HandshakeIdleTimeout:    time.Second * 3,
 		MaxIdleTimeout:          time.Second * 15,
-		DisablePathMTUDiscovery: true,
+		DisablePathMTUDiscovery: false,
 	}
 }
 
