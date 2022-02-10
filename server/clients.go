@@ -160,11 +160,13 @@ func (s *Server) handleClientEvents() {
 		// remove the client once they are disconnected. relying on notify
 		// as clients do not partipate in gossips
 		go func(p multiplexer.Peer) {
+			s.clientEvtCh <- struct{}{}
 			select {
 			case <-s.parentCtx.Done():
 			case <-p.NotifyClose():
 				s.logger.Debug("removing disconnected client", zap.Uint64("peer", p.Peer()))
 				s.clients.Remove(p.Peer())
+				s.clientEvtCh <- struct{}{}
 			}
 		}(peer)
 		// do not handle forward request from client

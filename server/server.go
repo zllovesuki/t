@@ -17,7 +17,6 @@ import (
 	"github.com/zllovesuki/t/profiler"
 	"github.com/zllovesuki/t/state"
 
-	"github.com/etecs-ru/ristretto"
 	"github.com/hashicorp/memberlist"
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
@@ -45,7 +44,8 @@ type Server struct {
 	gossipCfg          *memberlist.Config
 	broadcasts         *memberlist.TransmitLimitedQueue
 	updatesCh          chan state.ConnectedClients
-	stateCache         *ristretto.Cache
+	cached             *cachedValue
+	clientEvtCh        chan struct{}
 	membershipCh       chan struct{}
 	startLeader        chan struct{}
 	stopLeader         chan struct{}
@@ -65,18 +65,6 @@ func New(conf Config) (*Server, error) {
 	pMap := state.NewPeerMap(conf.Logger, self)
 	cMap := state.NewPeerMap(conf.Logger, self)
 	pg := state.NewPeerGraph(self)
-
-	sCache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e3,
-		MaxCost:     1 << 23, // 8MB
-		BufferItems: 64,
-		KeyToHash: func(key interface{}) (uint64, uint64) {
-			return key.(uint64), 0
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
 
 	s := &Server{
 		meta: Meta{
@@ -98,7 +86,8 @@ func New(conf Config) (*Server, error) {
 		clientTLSListener:  conf.ClientTLSListener,
 		clientQuicListener: conf.ClientQUICListener,
 		logger:             conf.Logger,
-		stateCache:         sCache,
+		cached:             &cachedValue{},
+		clientEvtCh:        make(chan struct{}, 1),
 		updatesCh:          make(chan state.ConnectedClients, 16),
 		membershipCh:       make(chan struct{}, 1),
 		startLeader:        make(chan struct{}, 1),
@@ -155,6 +144,8 @@ func New(conf Config) (*Server, error) {
 		return nil, fmt.Errorf("marshal meta: %w", err)
 	}
 	s.metaBytes.Store(b)
+
+	go s.backgroundDispatcher()
 
 	return s, nil
 }

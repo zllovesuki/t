@@ -21,19 +21,22 @@ type ConnectedClients struct {
 	f     *xorfilter.BinaryFuse8
 }
 
-func NewConnectedClients(peer uint64, clients []uint64) *ConnectedClients {
+func NewConnectedClients(peer uint64, clients []uint64) (*ConnectedClients, error) {
 	b := make([]byte, 8)
 	crc := crc64.New(crcTable)
 	for _, c := range clients {
 		binary.BigEndian.PutUint64(b, c)
 		crc.Write(b)
 	}
-	filter, _ := xorfilter.PopulateBinaryFuse8(clients)
+	filter, err := xorfilter.PopulateBinaryFuse8(clients)
+	if err != nil {
+		return nil, err
+	}
 	return &ConnectedClients{
 		Peer:  peer,
 		CRC64: crc.Sum64(),
 		f:     filter,
-	}
+	}, nil
 }
 
 func (c *ConnectedClients) MarshalBinary() ([]byte, error) {

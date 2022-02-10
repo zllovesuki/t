@@ -185,18 +185,11 @@ func (s *Server) LocalState(join bool) []byte {
 		return b
 	}
 
-	crc := s.clients.CRC64()
-	ext, found := s.stateCache.Get(crc)
-	if found {
-		s.logger.Debug("stateCache: reusing cached ConnectedClients", zap.Uint64("crc64", crc))
-		return ext.([]byte)
-	} else {
-		c := state.NewConnectedClients(s.PeerID(), s.clients.Snapshot())
-		b, _ := c.MarshalBinary()
-		s.stateCache.Set(c.CRC64, b, int64(len(b)))
-		s.logger.Debug("stateCache: insert new ConnectedClients cache entry", zap.Uint64("crc64", c.CRC64))
-		return b
+	c := s.cached.connectedClients.Load()
+	if c == nil {
+		return nil
 	}
+	return c.([]byte)
 }
 
 func (s *Server) MergeRemoteState(buf []byte, join bool) {
@@ -348,7 +341,7 @@ func (s *Server) handleMerge() {
 			logger := s.logger.With(zap.Uint64("peer", u.Peer))
 			logger.Debug("push/pull: processing state transfer")
 			if s.peerGraph.Replace(u) {
-				logger.Info("push/pull: peer graph was updated")
+				logger.Info("push/pull: peer graph was updated", zap.Uint64("CRC64", u.CRC64))
 			}
 		}(x)
 	}

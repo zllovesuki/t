@@ -7,7 +7,6 @@ require (
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/eggsampler/acme/v3 v3.2.1
-	github.com/etecs-ru/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gookit/config/v2 v2.0.27
