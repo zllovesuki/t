@@ -84,6 +84,9 @@ func (s *Server) peerReconciliation() {
 		if node.State != memberlist.StateAlive {
 			continue
 		}
+		if node.Name == s.gossipCfg.Name {
+			continue
+		}
 		if err := m.UnmarshalBinary(node.Meta); err != nil {
 			continue
 		}
