@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc64"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,6 +76,9 @@ func (s *PeerMap) NewPeer(ctx context.Context, proto protocol.Protocol, conf mul
 
 func (s *PeerMap) CRC64() uint64 {
 	peers := s.Snapshot()
+	sort.SliceStable(peers, func(i, j int) bool {
+		return peers[i] < peers[j]
+	})
 	b := make([]byte, 8)
 	crc := crc64.New(crcTable)
 	for _, peer := range peers {
@@ -100,9 +104,6 @@ func (s *PeerMap) Print() {
 func (s *PeerMap) Snapshot() []uint64 {
 	peers := []uint64{}
 	s.peers.Range(func(key, value interface{}) bool {
-		if value == nil {
-			return true
-		}
 		peers = append(peers, key.(uint64))
 		return true
 	})

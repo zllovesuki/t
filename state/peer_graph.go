@@ -13,6 +13,7 @@ func NewPeerGraph(self uint64) *PeerGraph {
 }
 
 func (p *PeerGraph) Who(client uint64) (peer uint64) {
+	// O(m) where m is the number of peers connected
 	p.peerFilter.Range(func(key, value interface{}) bool {
 		c := value.(ConnectedClients)
 		if c.Has(client) {
