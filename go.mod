@@ -4,10 +4,12 @@ go 1.16
 
 require (
 	github.com/FastFilter/xorfilter v0.1.1
+	github.com/TheZeroSlave/zapsentry v1.9.0
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/eggsampler/acme/v3 v3.2.1
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
+	github.com/getsentry/sentry-go v0.12.0
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gookit/config/v2 v2.0.27
 	github.com/gookit/goutil v0.4.4 // indirect

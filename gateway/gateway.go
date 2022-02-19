@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -101,17 +102,22 @@ func (g *Gateway) handleConnection(ctx context.Context, conn *tls.Conn) {
 			profiler.GatewayReqsType.WithLabelValues("raw").Inc()
 
 			_, err := g.Multiplexer.Forward(ctx, conn, g.link(cs.ServerName, cs.NegotiatedProtocol))
+			if errors.Is(err, multiplexer.ErrDestinationNotFound) {
+				profiler.GatewayRequests.WithLabelValues("not_found", "forward").Add(1)
+				conn.Close()
+				return
+			}
 			if err != nil {
 				g.Logger.Error("establish raw link error", zap.Error(err))
 				conn.Close()
 			}
 		case alpn.Multiplexer.String():
-			g.Logger.Error("received alpn proposal for multiplexer on gateway")
+			g.Logger.Warn("received alpn proposal for multiplexer on gateway")
 			profiler.GatewayReqsType.WithLabelValues("multiplexer").Inc()
 
 			conn.Close()
 		default:
-			g.Logger.Error("unknown alpn proposal", zap.String("proposal", cs.NegotiatedProtocol))
+			g.Logger.Warn("unknown alpn proposal", zap.String("proposal", cs.NegotiatedProtocol))
 			profiler.GatewayReqsType.WithLabelValues("error").Inc()
 
 			conn.Close()

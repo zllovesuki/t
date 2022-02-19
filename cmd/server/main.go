@@ -24,6 +24,8 @@ import (
 	"github.com/zllovesuki/t/server"
 	"github.com/zllovesuki/t/sock"
 
+	"github.com/TheZeroSlave/zapsentry"
+	"github.com/getsentry/sentry-go"
 	"github.com/lucas-clemente/quic-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -51,26 +53,9 @@ func main() {
 	var logger *zap.Logger
 	var err error
 
-	if *debug {
-		logger, err = zap.NewDevelopment()
-	} else {
-		logger, err = zap.NewProduction()
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// redirect stdlib log output to logger, since some packages
-	// are leaking log output and I have no way to redirect them
-	undo, err := zap.RedirectStdLogAt(logger, zapcore.DebugLevel)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer undo()
-
 	bundle, err := getConfig(*configPath)
 	if err != nil {
-		logger.Fatal("loading config file", zap.Error(err))
+		log.Fatalf("loading config file: %v", err)
 	}
 	if *peerPort != defaultPeerPort {
 		bundle.Multiplexer.Peer = *peerPort
@@ -78,6 +63,45 @@ func main() {
 	if *gossipPort != defaultGossipPort {
 		bundle.Gossip.Port = *gossipPort
 	}
+
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:     bundle.Sentry,
+		Release: Version,
+	}); err != nil {
+		log.Fatalf("initializing sentry: %v", err)
+	}
+
+	if *debug {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	if err != nil {
+		log.Fatalf("initializing zap logger: %v", err)
+	}
+
+	cfg := zapsentry.Configuration{
+		EnableBreadcrumbs: true,
+		BreadcrumbLevel:   zapcore.InfoLevel,
+		Level:             zapcore.ErrorLevel,
+		Tags: map[string]string{
+			"component": "t",
+		},
+	}
+	core, err := zapsentry.NewCore(cfg, zapsentry.NewSentryClientFromClient(sentry.CurrentHub().Client()))
+	if err != nil {
+		logger.Fatal("initializing zap core", zap.Error(err))
+	}
+	logger = zapsentry.AttachCoreToLogger(core, logger)
+	defer logger.Sync()
+
+	// redirect stdlib log output to logger, since some packages
+	// are leaking log output and I have no way to redirect them
+	undo, err := zap.RedirectStdLogAt(logger, zapcore.DebugLevel)
+	if err != nil {
+		logger.Fatal("redirecting std log", zap.Error(err))
+	}
+	defer undo()
 
 	peerCert, err := tls.LoadX509KeyPair(bundle.TLS.Peer.Cert, bundle.TLS.Peer.Key)
 	if err != nil {

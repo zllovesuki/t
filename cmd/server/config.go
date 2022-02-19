@@ -25,6 +25,7 @@ type TLSConfig struct {
 }
 
 type ConfigBundle struct {
+	Sentry      string
 	Network     server.Network
 	TLS         TLSConfig
 	Web         WebConfig
@@ -44,6 +45,7 @@ func getConfig(path string) (*ConfigBundle, error) {
 	}
 
 	var bundle ConfigBundle
+	bundle.Sentry = cfg.String("sentry")
 	cfg.MapStruct("web", &bundle.Web)
 	cfg.MapStruct("acme", &bundle.ACME)
 	cfg.MapStruct("acme.provider.rfc2136", &bundle.RFC2136)

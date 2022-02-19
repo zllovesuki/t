@@ -1,3 +1,5 @@
+sentry: https://public@sentry.example.com/1
+
 web:
   # this is the domain part of the web gateway. The generated tunnel name will be
   # something like: dramatize-detergent-donator-mutable-election.tunnel.example.com
