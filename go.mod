@@ -22,7 +22,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.0.2
 	github.com/libp2p/go-mplex v0.4.0
 	github.com/libp2p/go-yamux/v3 v3.0.2
-	github.com/lucas-clemente/quic-go v0.25.0
+	github.com/lucas-clemente/quic-go v0.26.0
 	github.com/miekg/dns v1.1.45
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
@@ -39,7 +39,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
-replace (
-	github.com/hashicorp/memberlist v0.3.1 => github.com/miragespace/memberlist v0.2.5-0.20220209165724-bc6f24613e38
-	github.com/lucas-clemente/quic-go v0.25.0 => github.com/zllovesuki/quic-go v0.24.1-0.20220209143539-b255d7ddc7ed
-)
+replace github.com/hashicorp/memberlist v0.3.1 => github.com/miragespace/memberlist v0.2.5-0.20220209165724-bc6f24613e38
