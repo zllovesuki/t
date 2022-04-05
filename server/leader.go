@@ -29,6 +29,7 @@ func (s *Server) handleMembershipChange() {
 					lowest = peer
 				}
 			}
+			// TODO: revisit this
 			if !atomic.CompareAndSwapUint64(&s.currentLeader, lowest, lowest) {
 				atomic.StoreUint64(&s.currentLeader, lowest)
 				s.logger.Info("new leader calculated", zap.Uint64("leader", lowest))

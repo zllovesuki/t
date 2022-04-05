@@ -337,12 +337,10 @@ func (s *Server) handleMerge() {
 		// 2. only a maximum of single hop is allowed inter-peers
 		// thus, we can replace our peer's peer graph with the incoming one
 		// if crc64 differs from the crc64 in our peer graph.
-		go func(u state.ConnectedClients) {
-			logger := s.logger.With(zap.Uint64("peer", u.Peer))
-			logger.Debug("push/pull: processing state transfer")
-			if s.peerGraph.Replace(u) {
-				logger.Info("push/pull: peer graph was updated", zap.Uint64("CRC64", u.CRC64))
-			}
-		}(x)
+		logger := s.logger.With(zap.Uint64("peer", x.Peer))
+		logger.Debug("push/pull: processing state transfer")
+		if s.peerGraph.Replace(x) {
+			logger.Info("push/pull: peer graph was updated", zap.Uint64("CRC64", x.CRC64))
+		}
 	}
 }
