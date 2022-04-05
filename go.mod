@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/FastFilter/xorfilter v0.1.1
-	github.com/TheZeroSlave/zapsentry v1.9.0
+	github.com/TheZeroSlave/zapsentry v1.10.0
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/eggsampler/acme/v3 v3.2.1
@@ -31,7 +31,7 @@ require (
 	github.com/urfave/cli/v2 v2.3.0
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
-	go.uber.org/zap v1.20.0
+	go.uber.org/zap v1.21.0
 	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838 // indirect
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/sys v0.0.0-20220128215802-99c3d69c2c27
